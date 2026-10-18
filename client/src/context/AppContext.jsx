@@ -425,10 +425,49 @@ export function AppProvider({ children }) {
     );
   };
 
+  // Open existing or create new conversation with a target user
+  const createOrOpenConversation = (targetUser) => {
+    if (!targetUser) return;
+    const existing = conversations.find(
+      c => c.user.username.toLowerCase() === targetUser.username.toLowerCase() ||
+           c.user.id === targetUser.id
+    );
+
+    if (existing) {
+      setActiveConvId(existing.id);
+      return existing.id;
+    }
+
+    const newId = "conv_" + Date.now();
+    const newConversation = {
+      id: newId,
+      user: {
+        id: targetUser.id || targetUser.username,
+        username: targetUser.username,
+        fullName: targetUser.fullName || targetUser.username,
+        avatar: targetUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+        isOnline: true
+      },
+      unreadCount: 0,
+      messages: []
+    };
+
+    setConversations(prev => [newConversation, ...prev]);
+    setActiveConvId(newId);
+    return newId;
+  };
+
   // Mark all notifications as read
   const markNotificationsAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     showToast("All notifications marked as read");
+  };
+
+  // Mark single notification as read
+  const markNotificationAsRead = (id) => {
+    setNotifications(prev =>
+      prev.map(n => (n.id === id ? { ...n, isRead: true } : n))
+    );
   };
 
   // Update profile
@@ -601,8 +640,10 @@ export function AppProvider({ children }) {
         activeConvId,
         setActiveConvId,
         sendMessage,
+        createOrOpenConversation,
         notifications,
         markNotificationsAsRead,
+        markNotificationAsRead,
         isCreateModalOpen,
         setIsCreateModalOpen,
         isCreateStoryOpen,

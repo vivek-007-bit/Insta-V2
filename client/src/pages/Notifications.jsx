@@ -1,130 +1,254 @@
 import React from "react";
-import { Heart, MessageCircle, UserPlus, AtSign, Check } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Heart, MessageCircle, UserPlus, AtSign } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 
 export default function Notifications() {
-  const { notifications, markNotificationsAsRead, showToast } = useApp();
+  const {
+    notifications,
+    markNotificationsAsRead,
+    markNotificationAsRead,
+    posts,
+    setSelectedPostDetail,
+    suggestedUsers,
+    toggleFollowUser,
+    showToast
+  } = useApp();
 
-  const getIcon = (type) => {
+  const navigate = useNavigate();
+
+  // Type badge icon helper
+  const getBadgeIcon = (type) => {
     switch (type) {
       case "like":
-        return <Heart size={14} fill="var(--accent-red)" color="var(--accent-red)" />;
+        return <Heart size={10} fill="var(--accent-red)" color="var(--accent-red)" />;
       case "comment":
-        return <MessageCircle size={14} fill="var(--accent-blue)" color="var(--accent-blue)" />;
+        return <MessageCircle size={10} fill="var(--accent-blue)" color="var(--accent-blue)" />;
       case "follow":
-        return <UserPlus size={14} color="var(--accent-blue)" />;
+        return <UserPlus size={10} color="var(--accent-blue)" />;
       case "mention":
-        return <AtSign size={14} color="#10b981" />;
+        return <AtSign size={10} color="#10b981" />;
       default:
-        return <Heart size={14} />;
+        return <Heart size={10} fill="var(--accent-red)" color="var(--accent-red)" />;
+    }
+  };
+
+  // Group notifications by timestamp
+  const groupNotifications = (notifs) => {
+    const groups = {
+      today: [],
+      thisWeek: [],
+      earlier: []
+    };
+
+    notifs.forEach(notif => {
+      const time = notif.timestamp || "";
+      if (time.includes("m") || time.includes("h")) {
+        groups.today.push(notif);
+      } else if (time.includes("d") || time.includes("1w")) {
+        groups.thisWeek.push(notif);
+      } else {
+        groups.earlier.push(notif);
+      }
+    });
+
+    return [
+      { title: "Today", items: groups.today },
+      { title: "This Week", items: groups.thisWeek },
+      { title: "Earlier", items: groups.earlier }
+    ].filter(section => section.items.length > 0);
+  };
+
+  const sections = groupNotifications(notifications);
+  const allRead = notifications.every(n => n.isRead);
+
+  // Check if target user is currently followed
+  const isUserFollowing = (username) => {
+    const found = suggestedUsers.find(
+      u => u.username.toLowerCase() === username.toLowerCase()
+    );
+    return found ? found.isFollowing : false;
+  };
+
+  // Handle follow / following toggle
+  const handleFollowToggle = (e, notif) => {
+    e.stopPropagation();
+    const found = suggestedUsers.find(
+      u => u.username.toLowerCase() === notif.user.username.toLowerCase()
+    );
+    if (found) {
+      toggleFollowUser(found.id);
+      showToast(found.isFollowing ? `Unfollowed @${notif.user.username}` : `Following @${notif.user.username}`);
+    } else {
+      showToast(`Followed @${notif.user.username} back!`);
+    }
+    if (!notif.isRead && markNotificationAsRead) {
+      markNotificationAsRead(notif.id);
+    }
+  };
+
+  // Handle row click
+  const handleRowClick = (notif) => {
+    if (!notif.isRead && markNotificationAsRead) {
+      markNotificationAsRead(notif.id);
+    }
+
+    if (notif.postId) {
+      const matchedPost = posts.find(p => p.id === notif.postId);
+      if (matchedPost) {
+        setSelectedPostDetail(matchedPost);
+        return;
+      }
+    }
+
+    if (notif.type === "follow") {
+      navigate("/profile");
+      return;
+    }
+
+    if (notif.targetThumbnail && posts.length > 0) {
+      setSelectedPostDetail(posts[0]);
+      return;
+    }
+
+    navigate("/profile");
+  };
+
+  // Handle thumbnail click specifically
+  const handleThumbnailClick = (e, notif) => {
+    e.stopPropagation();
+    if (!notif.isRead && markNotificationAsRead) {
+      markNotificationAsRead(notif.id);
+    }
+    if (notif.postId) {
+      const matchedPost = posts.find(p => p.id === notif.postId);
+      if (matchedPost) {
+        setSelectedPostDetail(matchedPost);
+        return;
+      }
+    }
+    if (posts.length > 0) {
+      setSelectedPostDetail(posts[0]);
     }
   };
 
   return (
-    <div style={{ width: "100%", maxWidth: "600px", padding: "24px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <h1 style={{ fontSize: "var(--font-size-2xl)", fontWeight: "700" }}>Notifications</h1>
+    <div className="notifications-container">
+      {/* Header */}
+      <header className="notifications-header">
+        <h1 className="notifications-title">Notifications</h1>
         <button
+          type="button"
           onClick={markNotificationsAsRead}
-          style={{
-            color: "var(--accent-blue)",
-            fontSize: "var(--font-size-sm)",
-            fontWeight: "600"
-          }}
+          disabled={allRead}
+          className="notifications-mark-read-btn"
+          aria-label="Mark all notifications as read"
         >
-          Mark all as read
+          {allRead ? "All caught up" : "Mark all as read"}
         </button>
-      </div>
+      </header>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {notifications.map(notif => (
-          <div
-            key={notif.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "12px 14px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: notif.isRead ? "transparent" : "var(--accent-blue-subtle)",
-              transition: "background-color 0.15s ease"
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ position: "relative" }}>
-                <img
-                  src={notif.user.avatar}
-                  alt={notif.user.username}
-                  style={{
-                    width: "44px",
-                    height: "44px",
-                    borderRadius: "50%",
-                    objectFit: "cover"
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "-2px",
-                    right: "-2px",
-                    width: "20px",
-                    height: "20px",
-                    borderRadius: "50%",
-                    backgroundColor: "var(--bg-elevated)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "1px solid var(--border-subtle)"
-                  }}
-                >
-                  {getIcon(notif.type)}
-                </div>
-              </div>
+      {/* Grouped Activity Feed */}
+      {sections.length === 0 ? (
+        <div className="notifications-empty-state">
+          <h2 className="notifications-empty-title">Activity on your posts</h2>
+          <p className="notifications-empty-sub">
+            When someone likes or comments on one of your posts, or follows you, you’ll see it here.
+          </p>
+        </div>
+      ) : (
+        sections.map(section => (
+          <section key={section.title} className="notifications-section">
+            <h2 className="notifications-section-heading">{section.title}</h2>
+            <div className="notifications-list" role="list">
+              {section.items.map(notif => {
+                const following = isUserFollowing(notif.user.username);
 
-              <div>
-                <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>
-                  <Link to="/profile" style={{ fontWeight: "600", marginRight: "4px" }}>
-                    {notif.user.username}
-                  </Link>
-                  {notif.text}
-                </p>
-                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  {notif.timestamp}
-                </span>
-              </div>
+                return (
+                  <div
+                    key={notif.id}
+                    onClick={() => handleRowClick(notif)}
+                    className={`notification-row ${notif.isRead ? "read" : "unread"}`}
+                    role="listitem"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleRowClick(notif);
+                      }
+                    }}
+                  >
+                    {/* Left: Avatar with badge + Description */}
+                    <div className="notification-row-left">
+                      <div className="notification-avatar-wrap">
+                        <img
+                          src={notif.user.avatar}
+                          alt={notif.user.username}
+                          className="notification-avatar"
+                        />
+                        <div
+                          className="notification-badge-icon"
+                          title={notif.type}
+                        >
+                          {getBadgeIcon(notif.type)}
+                        </div>
+                      </div>
+
+                      <div className="notification-content">
+                        <p className="notification-text-line">
+                          <span
+                            className="notification-username"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate("/profile");
+                            }}
+                          >
+                            {notif.user.username}
+                          </span>
+                          <span className="notification-body-text">
+                            {notif.text}
+                          </span>
+                          {" "}
+                          <span className="notification-time">
+                            {notif.timestamp}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Right: Actions, Post Thumbnail, or Follow Back */}
+                    <div className="notification-row-right">
+                      {notif.targetThumbnail ? (
+                        <img
+                          src={notif.targetThumbnail}
+                          alt="Post thumbnail"
+                          className="notification-thumbnail"
+                          onClick={(e) => handleThumbnailClick(e, notif)}
+                        />
+                      ) : notif.type === "follow" ? (
+                        <button
+                          type="button"
+                          onClick={(e) => handleFollowToggle(e, notif)}
+                          className={`notification-follow-btn ${following ? "secondary" : "primary"}`}
+                        >
+                          {following ? "Following" : "Follow Back"}
+                        </button>
+                      ) : null}
+
+                      {!notif.isRead && (
+                        <span
+                          className="notification-unread-dot"
+                          title="Unread notification"
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-
-            {/* Target Thumbnail or Follow Back */}
-            {notif.targetThumbnail ? (
-              <img
-                src={notif.targetThumbnail}
-                alt="Post thumbnail"
-                style={{
-                  width: "44px",
-                  height: "44px",
-                  objectFit: "cover",
-                  borderRadius: "var(--radius-xs)"
-                }}
-              />
-            ) : notif.type === "follow" ? (
-              <button
-                onClick={() => showToast(`Followed ${notif.user.username} back!`)}
-                style={{
-                  backgroundColor: "var(--accent-blue)",
-                  color: "#ffffff",
-                  fontSize: "var(--font-size-xs)",
-                  fontWeight: "600",
-                  padding: "6px 14px",
-                  borderRadius: "var(--radius-md)"
-                }}
-              >
-                Follow Back
-              </button>
-            ) : null}
-          </div>
-        ))}
-      </div>
+          </section>
+        ))
+      )}
     </div>
   );
 }

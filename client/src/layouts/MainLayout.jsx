@@ -1,5 +1,5 @@
 import React from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "../components/navigation/Sidebar";
 import { MobileTopBar, MobileBottomBar } from "../components/navigation/MobileNav";
 import SearchPanel from "../components/navigation/SearchPanel";
@@ -12,22 +12,25 @@ import EditProfileModal from "../components/modals/EditProfileModal";
 import { useApp } from "../context/AppContext";
 
 export default function MainLayout() {
+  const location = useLocation();
   const { toastMessage, isSidebarCollapsed, isSearchOpen } = useApp();
   const effectiveCollapsed = isSidebarCollapsed || isSearchOpen;
+  const isReelsPage = location.pathname === "/reels";
+  const isMessagesPage = location.pathname === "/messages";
 
   return (
-    <div className={`app-layout ${effectiveCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app-layout ${effectiveCollapsed ? "sidebar-collapsed" : ""} ${isReelsPage ? "reels-active" : ""} ${isMessagesPage ? "messages-active" : ""}`}>
       {/* Desktop / Tablet Sidebar */}
       <Sidebar />
 
       {/* Flyout Search Panel (Instagram style) */}
       <SearchPanel isInline={false} />
 
-      {/* Mobile Top Navigation */}
-      <MobileTopBar />
+      {/* Mobile Top Navigation (hidden on reels and messages for custom/immersive view) */}
+      {!isReelsPage && !isMessagesPage && <MobileTopBar />}
 
       {/* Main Content Viewport */}
-      <main className={`main-content ${effectiveCollapsed ? "sidebar-collapsed" : ""}`}>
+      <main className={`main-content ${effectiveCollapsed ? "sidebar-collapsed" : ""} ${isReelsPage ? "reels-main-content" : ""} ${isMessagesPage ? "messages-main-content" : ""}`}>
         <Outlet />
       </main>
 

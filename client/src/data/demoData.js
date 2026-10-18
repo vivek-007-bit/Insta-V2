@@ -310,6 +310,40 @@ export const INITIAL_REELS = [
     sharesCount: 930,
     isLiked: true,
     isSaved: true
+  },
+  {
+    id: "reel_3",
+    author: {
+      username: "elena_designs",
+      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+      isVerified: true
+    },
+    videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-forest-stream-in-the-sunlight-529-large.mp4",
+    posterUrl: "https://images.unsplash.com/photo-1448375240586-882707db888b?w=800&auto=format&fit=crop&q=80",
+    caption: "Sunlight filtering through the redwoods 🌲 Golden hour walks in Northern California.",
+    audioTrack: "elena_designs • Ambient Nature Recordings",
+    likesCount: 38400,
+    commentsCount: 1120,
+    sharesCount: 2840,
+    isLiked: false,
+    isSaved: false
+  },
+  {
+    id: "reel_4",
+    author: {
+      username: "marcus_code",
+      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      isVerified: false
+    },
+    videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-man-working-on-a-computer-1606-large.mp4",
+    posterUrl: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&auto=format&fit=crop&q=80",
+    caption: "Late night coding sessions and clean mechanical keyboard clicks ☕💻 #developer",
+    audioTrack: "Lofi Girl • Beats to Relax/Study to",
+    likesCount: 15900,
+    commentsCount: 340,
+    sharesCount: 680,
+    isLiked: false,
+    isSaved: true
   }
 ];
 
@@ -401,6 +435,7 @@ export const INITIAL_NOTIFICATIONS = [
     },
     text: "liked your post.",
     targetThumbnail: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=150&auto=format&fit=crop&q=80",
+    postId: "post_1",
     timestamp: "15m",
     isRead: false
   },
@@ -413,6 +448,7 @@ export const INITIAL_NOTIFICATIONS = [
     },
     text: "commented: 'The serenity in this shot is unreal!'",
     targetThumbnail: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=150&auto=format&fit=crop&q=80",
+    postId: "post_1",
     timestamp: "1h",
     isRead: false
   },
@@ -436,7 +472,32 @@ export const INITIAL_NOTIFICATIONS = [
     },
     text: "mentioned you in a comment: '@insta_creator check this out'",
     targetThumbnail: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=150&auto=format&fit=crop&q=80",
+    postId: "post_4",
     timestamp: "1d",
+    isRead: true
+  },
+  {
+    id: "notif_5",
+    type: "like",
+    user: {
+      username: "marcus_code",
+      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80"
+    },
+    text: "liked your post.",
+    targetThumbnail: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=150&auto=format&fit=crop&q=80",
+    postId: "post_2",
+    timestamp: "3d",
+    isRead: true
+  },
+  {
+    id: "notif_6",
+    type: "follow",
+    user: {
+      username: "kai_visuals",
+      avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80"
+    },
+    text: "started following you.",
+    timestamp: "1w",
     isRead: true
   }
 ];

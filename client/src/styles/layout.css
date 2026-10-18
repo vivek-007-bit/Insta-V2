@@ -269,6 +269,35 @@
   margin-left: var(--sidebar-width-compact);
 }
 
+/* Reels Pure Black Canvas Mode */
+.app-layout.reels-active {
+  background-color: #000000 !important;
+}
+
+.main-content.reels-main-content,
+.app-layout.reels-active .main-content {
+  background-color: #000000 !important;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 0 !important;
+}
+
+/* Direct Messages Full-Workspace View */
+.main-content.messages-main-content,
+.app-layout.messages-active .main-content {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding: 0 !important;
+  background-color: var(--bg-primary);
+  display: block;
+}
+
 .main-container {
   width: 100%;
   max-width: var(--main-layout-max-width);
