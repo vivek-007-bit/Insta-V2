@@ -4,14 +4,15 @@ import {
   X,
   Heart,
   MessageCircle,
-  Send,
   Bookmark,
   MoreHorizontal,
   CheckCircle2,
   Smile
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import { SUGGESTED_USERS } from "../../data/demoData";
+import CommentsSection from "../posts/CommentsSection";
+import ShareButton from "../posts/ShareButton";
+import { formatRelativeTime } from "../../utils/formatTime";
 
 export default function PostDetailModal() {
   const {
@@ -19,14 +20,13 @@ export default function PostDetailModal() {
     setSelectedPostDetail,
     toggleLikePost,
     toggleSavePost,
-    setShareDialogPost,
     setMoreOptionsPost,
-    addComment,
-    currentUser
+    addComment
   } = useApp();
 
   const [commentText, setCommentText] = useState("");
   const [modalDims, setModalDims] = useState(null);
+  const [submittingComment, setSubmittingComment] = useState(false);
   const commentInputRef = useRef(null);
 
   // Close on Escape key
@@ -64,7 +64,6 @@ export default function PostDetailModal() {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
-      // On mobile / small tablet, responsive CSS handles layout
       if (vw <= 768) {
         if (isMounted) setModalDims(null);
         return;
@@ -72,30 +71,25 @@ export default function PostDetailModal() {
 
       const maxModalHeight = Math.min(vh - 64, 850);
       const minModalHeight = 480;
-      const detailsWidth = 410; // Fixed target width for details panel
+      const detailsWidth = 410;
 
       let modalHeight;
       let mediaWidth;
 
       if (naturalAspect <= 0.82) {
-        // Portrait (e.g. 4:5 = 0.8)
         modalHeight = maxModalHeight;
         mediaWidth = Math.min(modalHeight * naturalAspect, 640);
       } else if (naturalAspect <= 1.05) {
-        // Square (1:1)
         modalHeight = Math.min(maxModalHeight, 720);
         mediaWidth = modalHeight;
       } else if (naturalAspect <= 1.5) {
-        // Mild landscape (4:3)
         modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, 620 / naturalAspect));
         mediaWidth = modalHeight * naturalAspect;
       } else {
-        // Wide landscape (16:9, etc.)
         modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, 520));
         mediaWidth = Math.min(modalHeight * naturalAspect, 680);
       }
 
-      // Ensure media width never pushes the right panel beyond viewport
       const maxAvailableMediaWidth = Math.max(300, vw - detailsWidth - 96);
       if (mediaWidth > maxAvailableMediaWidth) {
         mediaWidth = maxAvailableMediaWidth;
@@ -120,11 +114,16 @@ export default function PostDetailModal() {
 
   const handleClose = () => setSelectedPostDetail(null);
 
-  const handleAddComment = (e) => {
+  const handleAddComment = async (e) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
-    addComment(selectedPostDetail.id, commentText);
-    setCommentText("");
+    if (!commentText.trim() || submittingComment) return;
+
+    setSubmittingComment(true);
+    const created = await addComment(selectedPostDetail.id, commentText);
+    if (created) {
+      setCommentText("");
+    }
+    setSubmittingComment(false);
   };
 
   const handleReply = (username) => {
@@ -132,12 +131,7 @@ export default function PostDetailModal() {
     commentInputRef.current?.focus();
   };
 
-  const getCommentAvatar = (username) => {
-    if (username === currentUser?.username) return currentUser.avatar;
-    const match = SUGGESTED_USERS.find((u) => u.username === username);
-    if (match) return match.avatar;
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=262626&color=ffffff&size=100`;
-  };
+  const isVideo = selectedPostDetail.mediaType === "video";
 
   return (
     <div
@@ -146,7 +140,6 @@ export default function PostDetailModal() {
       role="dialog"
       aria-modal="true"
     >
-      {/* Outside close button in top-right of viewport */}
       <button
         type="button"
         className="post-detail-close-btn"
@@ -156,7 +149,6 @@ export default function PostDetailModal() {
         <X size={26} strokeWidth={2.2} />
       </button>
 
-      {/* Main Two-Column Modal Container */}
       <div
         className="modal-container post-detail-modal"
         onClick={(e) => e.stopPropagation()}
@@ -167,20 +159,30 @@ export default function PostDetailModal() {
           className="post-detail-media"
           style={modalDims?.mediaWidth ? { width: modalDims.mediaWidth, flex: `0 0 ${modalDims.mediaWidth}` } : undefined}
         >
-          <img
-            src={selectedPostDetail.mediaUrl}
-            alt={selectedPostDetail.caption || "Post detail"}
-            className="post-detail-img"
-          />
+          {isVideo ? (
+            <video
+              src={selectedPostDetail.mediaUrl}
+              controls
+              playsInline
+              className="post-detail-img"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <img
+              src={selectedPostDetail.mediaUrl}
+              alt={selectedPostDetail.caption || "Post detail"}
+              className="post-detail-img"
+            />
+          )}
         </div>
 
         {/* Right Column: Post Details Panel */}
         <div className="post-detail-sidebar">
-          {/* 1. Compact Post Header */}
+          {/* 1. Header */}
           <div className="post-detail-header">
             <div className="post-detail-header-left">
               <Link
-                to="/profile"
+                to={`/profile/${selectedPostDetail.author.username}`}
                 className="post-detail-avatar-link"
                 onClick={handleClose}
                 title={selectedPostDetail.author.username}
@@ -194,7 +196,7 @@ export default function PostDetailModal() {
               <div className="post-detail-header-meta">
                 <div className="post-detail-author-name-row">
                   <Link
-                    to="/profile"
+                    to={`/profile/${selectedPostDetail.author.username}`}
                     className="post-detail-username"
                     onClick={handleClose}
                   >
@@ -226,97 +228,14 @@ export default function PostDetailModal() {
             </button>
           </div>
 
-          {/* 2. Independently Scrollable Comments Region */}
-          <div className="post-detail-comments-list">
-            {/* Original caption as first item with author avatar */}
-            {selectedPostDetail.caption && (
-              <div className="post-detail-comment-item">
-                <Link
-                  to="/profile"
-                  className="post-detail-comment-avatar-link"
-                  onClick={handleClose}
-                  title={selectedPostDetail.author.username}
-                >
-                  <img
-                    src={selectedPostDetail.author.avatar}
-                    alt={selectedPostDetail.author.username}
-                    className="post-detail-comment-avatar"
-                  />
-                </Link>
-                <div className="post-detail-comment-body">
-                  <div className="post-detail-comment-text-wrap">
-                    <Link
-                      to="/profile"
-                      className="post-detail-comment-user"
-                      onClick={handleClose}
-                    >
-                      {selectedPostDetail.author.username}
-                    </Link>
-                    {selectedPostDetail.author.isVerified && (
-                      <CheckCircle2
-                        size={12}
-                        className="verified-badge inline-verified"
-                        fill="currentColor"
-                      />
-                    )}
-                    <span className="post-detail-comment-content">
-                      {selectedPostDetail.caption}
-                    </span>
-                  </div>
-                  <div className="post-detail-comment-meta">
-                    <span className="post-detail-comment-time">{selectedPostDetail.createdAt}</span>
-                  </div>
-                </div>
-              </div>
-            )}
+          {/* 2. Scrollable Comments Section */}
+          <CommentsSection
+            post={selectedPostDetail}
+            onReply={handleReply}
+            onCloseModal={handleClose}
+          />
 
-            {/* Comments List */}
-            {selectedPostDetail.comments?.map((comm) => (
-              <div key={comm.id} className="post-detail-comment-item">
-                <Link
-                  to="/profile"
-                  className="post-detail-comment-avatar-link"
-                  onClick={handleClose}
-                  title={comm.username}
-                >
-                  <img
-                    src={getCommentAvatar(comm.username)}
-                    alt={comm.username}
-                    className="post-detail-comment-avatar"
-                  />
-                </Link>
-                <div className="post-detail-comment-body">
-                  <div className="post-detail-comment-text-wrap">
-                    <Link
-                      to="/profile"
-                      className="post-detail-comment-user"
-                      onClick={handleClose}
-                    >
-                      {comm.username}
-                    </Link>
-                    <span className="post-detail-comment-content">{comm.text}</span>
-                  </div>
-                  <div className="post-detail-comment-meta">
-                    <span className="post-detail-comment-time">{comm.createdAt}</span>
-                    {comm.likesCount > 0 && (
-                      <span className="post-detail-comment-likes">
-                        {comm.likesCount} {comm.likesCount === 1 ? "like" : "likes"}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      className="post-detail-comment-reply-btn"
-                      onClick={() => handleReply(comm.username)}
-                    >
-                      Reply
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* 3 & 4. Fixed Footer: Actions & Likes Section + Comment Composer */}
+          {/* 3. Fixed Footer: Actions & Likes Section */}
           <div className="post-detail-footer">
             <div className="post-detail-actions-section">
               <div className="post-detail-actions-row">
@@ -343,15 +262,7 @@ export default function PostDetailModal() {
                   >
                     <MessageCircle size={24} />
                   </button>
-                  <button
-                    type="button"
-                    className="post-action-btn"
-                    onClick={() => setShareDialogPost(selectedPostDetail)}
-                    title="Share"
-                    aria-label="Share post"
-                  >
-                    <Send size={24} />
-                  </button>
+                  <ShareButton post={selectedPostDetail} />
                 </div>
                 <button
                   type="button"
@@ -368,11 +279,11 @@ export default function PostDetailModal() {
               </div>
 
               <div className="post-detail-likes-count">
-                {selectedPostDetail.likesCount.toLocaleString()}{" "}
-                {selectedPostDetail.likesCount === 1 ? "like" : "likes"}
+                {(selectedPostDetail.likesCount || 0).toLocaleString()}{" "}
+                {(selectedPostDetail.likesCount || 0) === 1 ? "like" : "likes"}
               </div>
               <div className="post-detail-timestamp">
-                {selectedPostDetail.createdAt}
+                {formatRelativeTime(selectedPostDetail.createdAt)}
               </div>
             </div>
 
@@ -397,13 +308,14 @@ export default function PostDetailModal() {
                 className="post-detail-comment-input"
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
+                disabled={submittingComment}
               />
               <button
                 type="submit"
                 className="post-detail-comment-submit"
-                disabled={!commentText.trim()}
+                disabled={!commentText.trim() || submittingComment}
               >
-                Post
+                {submittingComment ? "..." : "Post"}
               </button>
             </form>
           </div>

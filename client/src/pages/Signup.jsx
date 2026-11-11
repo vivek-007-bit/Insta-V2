@@ -6,7 +6,7 @@ import { useApp } from "../context/AppContext";
 import { Sparkles } from "lucide-react";
 
 export default function Signup() {
-  const { signup, quickDemoLogin, isAuthenticated } = useApp();
+  const { signup, isAuthenticated, authenticationLoading } = useApp();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -18,6 +18,32 @@ export default function Signup() {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // While checking existing session, show minimal loading
+  if (authenticationLoading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          background: "var(--bg-primary)"
+        }}
+      >
+        <div
+          style={{
+            width: "36px",
+            height: "36px",
+            border: "3px solid var(--border-subtle)",
+            borderTopColor: "var(--accent-blue)",
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite"
+          }}
+        />
+      </div>
+    );
+  }
 
   // If already authenticated, redirect to home
   if (isAuthenticated) {
@@ -69,7 +95,7 @@ export default function Signup() {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
 
@@ -84,27 +110,30 @@ export default function Signup() {
     }
 
     setIsSubmitting(true);
-    // Simulate brief network delay
-    setTimeout(() => {
-      const result = signup({
+    setFormError("");
+
+    try {
+      const result = await signup({
         fullName: formData.fullName,
         username: formData.username,
         email: formData.email,
         password: formData.password
       });
-      setIsSubmitting(false);
 
       if (result.success) {
         navigate("/", { replace: true });
       } else {
-        setFormError(result.error);
+        setFormError(result.error || "Failed to create account");
       }
-    }, 250);
+    } catch (err) {
+      setFormError(err.message || "An error occurred during registration");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleQuickDemo = () => {
-    quickDemoLogin("insta_creator");
-    navigate("/", { replace: true });
+    navigate("/login");
   };
 
   const isFormComplete =
@@ -138,7 +167,7 @@ export default function Signup() {
           title="Instant Demo Access"
         >
           <Sparkles size={16} />
-          <span>Quick Demo Login (@insta_creator)</span>
+          <span>Already have credentials? Log in</span>
         </button>
 
         {/* OR Divider */}

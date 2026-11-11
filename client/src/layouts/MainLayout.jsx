@@ -15,7 +15,7 @@ export default function MainLayout() {
   const location = useLocation();
   const { toastMessage, isSidebarCollapsed, isSearchOpen } = useApp();
   const effectiveCollapsed = isSidebarCollapsed || isSearchOpen;
-  const isReelsPage = location.pathname === "/reels";
+  const isReelsPage = location.pathname.startsWith("/reels");
   const isMessagesPage = location.pathname === "/messages";
 
   return (

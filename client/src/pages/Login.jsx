@@ -6,7 +6,7 @@ import { useApp } from "../context/AppContext";
 import { Sparkles, HelpCircle } from "lucide-react";
 
 export default function Login() {
-  const { login, quickDemoLogin, isAuthenticated } = useApp();
+  const { login, isAuthenticated, authenticationLoading } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -18,6 +18,32 @@ export default function Login() {
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
+
+  // While checking existing session, show minimal loading
+  if (authenticationLoading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          background: "var(--bg-primary)"
+        }}
+      >
+        <div
+          style={{
+            width: "36px",
+            height: "36px",
+            border: "3px solid var(--border-subtle)",
+            borderTopColor: "var(--accent-blue)",
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite"
+          }}
+        />
+      </div>
+    );
+  }
 
   // If already authenticated, redirect to previous location or home
   if (isAuthenticated) {
@@ -34,7 +60,7 @@ export default function Login() {
     if (formError) setFormError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
 
@@ -51,24 +77,26 @@ export default function Login() {
     }
 
     setIsSubmitting(true);
-    // Simulate brief network delay
-    setTimeout(() => {
-      const result = login(formData.identifier, formData.password);
-      setIsSubmitting(false);
+    setFormError("");
 
+    try {
+      const result = await login(formData.identifier, formData.password);
       if (result.success) {
         const destination = location.state?.from?.pathname || "/";
         navigate(destination, { replace: true });
       } else {
-        setFormError(result.error);
+        setFormError(result.error || "Failed to log in");
       }
-    }, 200);
+    } catch (err) {
+      setFormError(err.message || "An unexpected error occurred during login");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleQuickDemo = (username = "insta_creator") => {
-    quickDemoLogin(username);
-    const destination = location.state?.from?.pathname || "/";
-    navigate(destination, { replace: true });
+    setFormData((prev) => ({ ...prev, identifier: username }));
+    setFormError("Please enter the password for this account, or register a new account on the Sign up page.");
   };
 
   return (
@@ -82,17 +110,6 @@ export default function Login() {
           </div>
           <span className="auth-brand-text">Insta-V2</span>
         </Link>
-
-        {/* Quick Demo One-Click Access */}
-        <button
-          type="button"
-          className="auth-quick-btn"
-          onClick={() => handleQuickDemo("insta_creator")}
-          title="One-click Demo Login"
-        >
-          <Sparkles size={16} />
-          <span>Log in as Demo User (@insta_creator)</span>
-        </button>
 
         {/* OR Divider */}
         <div className="auth-divider">
@@ -158,7 +175,7 @@ export default function Login() {
         Don't have an account? <Link to="/signup">Sign up</Link>
       </div>
 
-      {/* Forgot Password Simulated Modal */}
+      {/* Forgot Password Modal */}
       {showForgotModal && (
         <div
           className="modal-overlay"
@@ -197,28 +214,18 @@ export default function Login() {
                 marginBottom: "20px"
               }}
             >
-              This is a frontend demo prototype. In a production deployment with Django and MongoDB, you would receive a password reset link at your verified email.
-            </p>
-            <p
-              style={{
-                fontSize: "12px",
-                color: "var(--accent-blue)",
-                fontWeight: "600",
-                marginBottom: "20px"
-              }}
-            >
-              Demo credentials: Username: <code>insta_creator</code> (or <code>elena_designs</code>), Password: any 6+ chars.
+              Please enter your username or registered email and password to log in. If you do not have an account yet, create one on the sign-up page.
             </p>
             <button
               type="button"
               className="auth-submit-btn"
               style={{ margin: "0 auto", width: "100%" }}
               onClick={() => {
-                handleQuickDemo("insta_creator");
                 setShowForgotModal(false);
+                navigate("/signup");
               }}
             >
-              Log in with Demo Account
+              Create New Account
             </button>
             <button
               type="button"

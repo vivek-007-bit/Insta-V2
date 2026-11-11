@@ -43,7 +43,8 @@ export default function Sidebar() {
   const location = useLocation();
   const {
     currentUser,
-    notifications,
+    unreadCount,
+    followRequests,
     conversations,
     setIsCreateModalOpen,
     isSearchOpen,
@@ -58,7 +59,8 @@ export default function Sidebar() {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   // Unread counts
-  const unreadNotifsCount = notifications.filter(n => !n.isRead).length;
+  const totalUnreadNotifs = unreadCount || 0;
+  const unreadNotifsLabel = totalUnreadNotifs > 99 ? "99+" : totalUnreadNotifs;
   const unreadMessagesCount = conversations.reduce(
     (acc, c) => acc + (c.unreadCount || 0),
     0
@@ -164,8 +166,8 @@ export default function Sidebar() {
                 size={24}
                 strokeWidth={isActive("/notifications") ? 2.5 : 1.8}
               />
-              {unreadNotifsCount > 0 && (
-                <span className="nav-badge">{unreadNotifsCount}</span>
+              {totalUnreadNotifs > 0 && (
+                <span className="nav-badge">{unreadNotifsLabel}</span>
               )}
             </div>
             <span className="nav-label">Notifications</span>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Camera } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import mediaService from "../../services/mediaService";
 
 export default function EditProfileModal() {
   const { isEditProfileOpen, setIsEditProfileOpen, currentUser, updateProfile } = useApp();
@@ -13,6 +14,7 @@ export default function EditProfileModal() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
   const MAX_BIO_LENGTH = 150;
 
@@ -24,6 +26,7 @@ export default function EditProfileModal() {
       setBio(currentUser.bio || "");
       setWebsite(currentUser.website || "");
       setAvatar(currentUser.avatar || "");
+      setSelectedFile(null);
       setErrorMessage("");
       setIsSubmitting(false);
     }
@@ -44,6 +47,7 @@ export default function EditProfileModal() {
 
   const handleClose = () => {
     setErrorMessage("");
+    setSelectedFile(null);
     setIsEditProfileOpen(false);
   };
 
@@ -54,13 +58,14 @@ export default function EditProfileModal() {
         setErrorMessage("Please select a valid image file.");
         return;
       }
+      setSelectedFile(file);
       const url = URL.createObjectURL(file);
       setAvatar(url);
       setErrorMessage("");
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     // Validation
@@ -76,16 +81,35 @@ export default function EditProfileModal() {
     }
 
     setIsSubmitting(true);
+    setErrorMessage("");
 
-    updateProfile({
-      fullName: fullName.trim(),
-      username: trimmedUsername,
-      bio: bio.trim(),
-      website: website.trim(),
-      avatar
-    });
+    try {
+      let finalAvatarUrl = avatar;
 
-    handleClose();
+      if (selectedFile) {
+        const sig = await mediaService.getUploadSignature({ folder: "insta_v2", resourceType: "image" });
+        const uploadRes = await mediaService.uploadToCloudinary(selectedFile, sig);
+        finalAvatarUrl = uploadRes.mediaUrl;
+      }
+
+      const res = await updateProfile({
+        fullName: fullName.trim(),
+        username: trimmedUsername,
+        bio: bio.trim(),
+        website: website.trim(),
+        avatar: finalAvatarUrl
+      });
+
+      if (res && res.success) {
+        handleClose();
+      } else {
+        setErrorMessage(res?.error || "Failed to update profile");
+      }
+    } catch (err) {
+      setErrorMessage(err.message || "Failed to update profile");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

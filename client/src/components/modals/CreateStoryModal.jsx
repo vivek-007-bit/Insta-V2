@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X, Image as ImageIcon, Film, RefreshCw, Trash2, ArrowLeft } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import mediaService from "../../services/mediaService";
 
 export default function CreateStoryModal() {
   const { isCreateStoryOpen, setIsCreateStoryOpen, addNewStory, currentUser } = useApp();
@@ -10,6 +11,8 @@ export default function CreateStoryModal() {
   const [mediaType, setMediaType] = useState("image"); // "image" | "video"
   const [caption, setCaption] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
 
   // Clean up object URLs
@@ -24,17 +27,18 @@ export default function CreateStoryModal() {
   // Handle ESC key to close modal
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === "Escape" && isCreateStoryOpen) {
+      if (e.key === "Escape" && isCreateStoryOpen && !isUploading) {
         handleClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isCreateStoryOpen, previewUrl]);
+  }, [isCreateStoryOpen, previewUrl, isUploading]);
 
   if (!isCreateStoryOpen) return null;
 
   const handleClose = () => {
+    if (isUploading) return;
     if (previewUrl && previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -42,6 +46,8 @@ export default function CreateStoryModal() {
     setPreviewUrl(null);
     setCaption("");
     setErrorMessage("");
+    setIsUploading(false);
+    setUploadProgress(0);
     setIsCreateStoryOpen(false);
   };
 
@@ -70,6 +76,7 @@ export default function CreateStoryModal() {
   };
 
   const handleRemoveMedia = () => {
+    if (isUploading) return;
     if (previewUrl && previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -77,23 +84,54 @@ export default function CreateStoryModal() {
     setPreviewUrl(null);
     setCaption("");
     setErrorMessage("");
+    setUploadProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!previewUrl) {
+  const handleSubmit = async (e) => {
+    e?.preventDefault();
+    if (!selectedFile) {
       setErrorMessage("Please select a photo or video for your story.");
       return;
     }
 
-    addNewStory({
-      mediaUrl: previewUrl,
-      mediaType,
-      caption
-    });
+    setIsUploading(true);
+    setErrorMessage("");
+    setUploadProgress(0);
 
-    handleClose();
+    try {
+      // 1. Get signed upload signature from backend
+      const signatureData = await mediaService.getUploadSignature({
+        folder: "insta_v2/stories",
+        resourceType: mediaType === "video" ? "video" : "image"
+      });
+
+      // 2. Upload directly to Cloudinary
+      const uploadResult = await mediaService.uploadToCloudinary(
+        selectedFile,
+        signatureData,
+        (progress) => setUploadProgress(progress)
+      );
+
+      // 3. Save story metadata to MongoDB
+      const storyResponse = await mediaService.createStory({
+        mediaUrl: uploadResult.mediaUrl,
+        publicId: uploadResult.publicId,
+        mediaType: uploadResult.mediaType,
+        caption
+      });
+
+      // 4. Update frontend context with new story
+      addNewStory(storyResponse.story);
+
+      // 5. Clean up & close
+      handleClose();
+    } catch (err) {
+      console.error("[CreateStoryModal] Upload error:", err);
+      setErrorMessage(err.message || "Failed to upload story. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -108,17 +146,18 @@ export default function CreateStoryModal() {
         className="modal-close-x"
         onClick={handleClose}
         aria-label="Close story composer"
+        disabled={isUploading}
       >
         <X size={26} />
       </button>
 
       <div
         className="modal-container create-story-modal"
-        onClick={(e) => e.stopPropagation()} // Prevent accidental close on modal interaction
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="create-story-header">
-          {previewUrl ? (
+          {previewUrl && !isUploading ? (
             <button
               className="post-action-btn"
               onClick={handleRemoveMedia}
@@ -139,8 +178,13 @@ export default function CreateStoryModal() {
               type="button"
               className="create-story-share-btn"
               onClick={handleSubmit}
+              disabled={isUploading}
             >
-              Share to Story
+              {isUploading
+                ? uploadProgress > 0
+                  ? `Sharing ${uploadProgress}%`
+                  : "Sharing..."
+                : "Share to Story"}
             </button>
           ) : (
             <div style={{ width: 24 }} />
@@ -190,11 +234,16 @@ export default function CreateStoryModal() {
               {/* Top Story Author Pill */}
               <div className="create-story-author-pill">
                 <img
-                  src={currentUser.avatar}
-                  alt={currentUser.username}
+                  src={
+                    currentUser?.avatar ||
+                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+                  }
+                  alt={currentUser?.username || "user"}
                   className="create-story-author-avatar"
                 />
-                <span className="create-story-author-name">{currentUser.username}</span>
+                <span className="create-story-author-name">
+                  {currentUser?.username || "user"}
+                </span>
                 <span className="create-story-time-badge">Just now</span>
               </div>
 
@@ -226,6 +275,7 @@ export default function CreateStoryModal() {
                   onChange={(e) => setCaption(e.target.value)}
                   className="create-story-caption-input"
                   maxLength={150}
+                  disabled={isUploading}
                 />
               </div>
             </div>
@@ -242,6 +292,7 @@ export default function CreateStoryModal() {
                   type="button"
                   className="create-story-tool-btn"
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
                 >
                   <RefreshCw size={16} />
                   <span>Replace media</span>
@@ -258,24 +309,37 @@ export default function CreateStoryModal() {
                   type="button"
                   className="create-story-tool-btn danger"
                   onClick={handleRemoveMedia}
+                  disabled={isUploading}
                 >
                   <Trash2 size={16} />
                   <span>Remove</span>
                 </button>
               </div>
 
+              {errorMessage && (
+                <div className="create-modal-error-badge" style={{ marginTop: "10px" }}>
+                  {errorMessage}
+                </div>
+              )}
+
               <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
                 <button
                   type="button"
                   className="create-story-primary-submit"
                   onClick={handleSubmit}
+                  disabled={isUploading}
                 >
-                  Share to Story
+                  {isUploading
+                    ? uploadProgress > 0
+                      ? `Sharing... (${uploadProgress}%)`
+                      : "Sharing..."
+                    : "Share to Story"}
                 </button>
                 <button
                   type="button"
                   className="create-story-cancel-btn"
                   onClick={handleClose}
+                  disabled={isUploading}
                 >
                   Cancel
                 </button>

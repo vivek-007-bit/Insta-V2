@@ -1,6 +1,7 @@
 import React from "react";
-import { User, Bell, Lock, Palette, Shield, HelpCircle, LogOut } from "lucide-react";
+import { User, Bell, Palette, Shield, LogOut } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import AccountPrivacySettings from "../components/profile/AccountPrivacySettings";
 
 export default function Settings() {
   const { theme, toggleTheme, setIsEditProfileOpen, showToast, logout } = useApp();
@@ -103,39 +104,7 @@ export default function Settings() {
         </div>
 
         {/* Privacy & Security */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px",
-            backgroundColor: "var(--bg-elevated)",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "var(--radius-md)"
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-            <Lock size={20} style={{ color: "var(--text-secondary)" }} />
-            <div>
-              <div style={{ fontWeight: "600", fontSize: "var(--font-size-base)" }}>Account Privacy</div>
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginTop: "2px" }}>
-                Public account (Visible to everyone on Insta-V2)
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => showToast("Account privacy is simulated in demo")}
-            style={{
-              padding: "7px 14px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--accent-gray-btn)",
-              fontSize: "var(--font-size-sm)",
-              fontWeight: "600"
-            }}
-          >
-            Manage
-          </button>
-        </div>
+        <AccountPrivacySettings />
 
         {/* Security / Help */}
         <div
@@ -152,9 +121,9 @@ export default function Settings() {
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
             <Shield size={20} style={{ color: "var(--text-secondary)" }} />
             <div>
-              <div style={{ fontWeight: "600", fontSize: "var(--font-size-base)" }}>Security Notice</div>
+              <div style={{ fontWeight: "600", fontSize: "var(--font-size-base)" }}>Security</div>
               <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginTop: "2px" }}>
-                Insta-V2 Frontend Prototype — No real backend or database credentials attached.
+                Authenticated via HTTP-only JWT cookies and MongoDB Atlas.
               </div>
             </div>
           </div>

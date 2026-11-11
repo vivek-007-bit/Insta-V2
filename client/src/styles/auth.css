@@ -468,6 +468,7 @@
   background-color: var(--bg-hover);
   border-radius: var(--radius-sm);
   margin-top: 4px;
+  display: none;
 }
 
 /* ==========================================================================

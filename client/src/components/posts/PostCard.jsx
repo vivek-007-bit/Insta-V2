@@ -4,17 +4,20 @@ import {
   MoreHorizontal,
   Heart,
   MessageCircle,
-  Send,
   Bookmark,
   CheckCircle2
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import { formatRelativeTime } from "../../utils/formatTime";
+import ShareButton from "./ShareButton";
 
 export function PostHeader({ post, onMoreClick }) {
+  const profileLink = `/profile/${post.author.username}`;
+
   return (
     <div className="post-header">
       <div className="post-header-left">
-        <Link to="/profile" className="post-author-avatar-wrap">
+        <Link to={profileLink} className="post-author-avatar-wrap">
           <img
             src={post.author.avatar}
             alt={post.author.username}
@@ -23,14 +26,14 @@ export function PostHeader({ post, onMoreClick }) {
         </Link>
         <div className="post-header-meta">
           <div className="post-author-name-row">
-            <Link to="/profile" className="post-author-username">
+            <Link to={profileLink} className="post-author-username">
               {post.author.username}
             </Link>
             {post.author.isVerified && (
               <CheckCircle2 size={13} className="verified-badge" fill="currentColor" />
             )}
             <span className="post-header-dot">•</span>
-            <span className="post-header-time">{post.createdAt}</span>
+            <span className="post-header-time">{formatRelativeTime(post.createdAt)}</span>
           </div>
           {post.location && <span className="post-location">{post.location}</span>}
         </div>
@@ -71,18 +74,27 @@ export function PostMedia({ post, onDoubleClick }) {
       onDoubleClick={handleDoubleClick}
       title="Double click to like"
     >
-      <img
-        src={post.mediaUrl}
-        alt={post.caption || "Post media"}
-        className="post-media-img"
-        loading="lazy"
-        onError={(e) => {
-          // Graceful fallback for broken image URLs
-          e.target.onerror = null;
-          e.target.src =
-            "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=600&auto=format&fit=crop&q=80";
-        }}
-      />
+      {post.mediaType === "video" ? (
+        <video
+          src={post.mediaUrl}
+          controls
+          playsInline
+          className="post-media-img"
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <img
+          src={post.mediaUrl}
+          alt={post.caption || "Post media"}
+          className="post-media-img"
+          loading="lazy"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src =
+              "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=600&auto=format&fit=crop&q=80";
+          }}
+        />
+      )}
       {showHeart && (
         <div className="post-heart-animation">
           <Heart size={90} fill="#ffffff" stroke="#ffffff" />
@@ -92,7 +104,7 @@ export function PostMedia({ post, onDoubleClick }) {
   );
 }
 
-export function PostActions({ post, onLike, onComment, onShare, onSave }) {
+export function PostActions({ post, onLike, onComment, onSave }) {
   return (
     <div className="post-actions-row">
       <div className="post-actions-left">
@@ -116,13 +128,7 @@ export function PostActions({ post, onLike, onComment, onShare, onSave }) {
           <MessageCircle size={24} />
         </button>
 
-        <button
-          className="post-action-btn"
-          onClick={() => onShare(post)}
-          aria-label="Share post"
-        >
-          <Send size={24} />
-        </button>
+        <ShareButton post={post} />
       </div>
 
       <button
@@ -145,7 +151,7 @@ export function PostCaption({ post }) {
 
   return (
     <div className="post-caption-block">
-      <Link to="/profile" className="post-caption-author">
+      <Link to={`/profile/${post.author.username}`} className="post-caption-author">
         {post.author.username}
       </Link>
       <span>
@@ -164,23 +170,29 @@ export function PostCaption({ post }) {
 }
 
 export function CommentsPreview({ post, onOpenDetail }) {
-  const commentCount = post.comments ? post.comments.length : 0;
+  const previewComments = post.comments || [];
+  const totalCount =
+    typeof post.commentsCount === "number"
+      ? post.commentsCount
+      : previewComments.length;
 
-  if (commentCount === 0) return null;
+  if (totalCount === 0 && previewComments.length === 0) return null;
 
   return (
     <div>
-      {commentCount > 1 && (
+      {totalCount > 1 && (
         <button
           className="post-view-comments-btn"
           onClick={() => onOpenDetail(post)}
         >
-          View all {commentCount} comments
+          View all {totalCount} comments
         </button>
       )}
-      {post.comments.slice(0, 2).map(comm => (
+      {previewComments.slice(-2).map((comm) => (
         <div key={comm.id} className="post-caption-block" style={{ marginTop: "2px" }}>
-          <span className="post-caption-author">{comm.username}</span>
+          <Link to={`/profile/${comm.username}`} className="post-caption-author">
+            {comm.username}
+          </Link>
           <span>{comm.text}</span>
         </div>
       ))}
@@ -194,18 +206,22 @@ export default function PostCard({ post }) {
     doubleClickLikePost,
     toggleSavePost,
     setSelectedPostDetail,
-    setShareDialogPost,
     setMoreOptionsPost,
     addComment
   } = useApp();
 
   const [commentInput, setCommentInput] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
 
-  const handleAddComment = (e) => {
+  const handleAddComment = async (e) => {
     e.preventDefault();
-    if (!commentInput.trim()) return;
-    addComment(post.id, commentInput);
-    setCommentInput("");
+    if (!commentInput.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    const created = await addComment(post.id, commentInput);
+    if (created) {
+      setCommentInput("");
+    }
+    setSubmittingComment(false);
   };
 
   return (
@@ -224,13 +240,13 @@ export default function PostCard({ post }) {
         post={post}
         onLike={(id) => toggleLikePost(id)}
         onComment={(p) => setSelectedPostDetail(p)}
-        onShare={(p) => setShareDialogPost(p)}
         onSave={(id) => toggleSavePost(id)}
       />
 
       <div className="post-details">
         <div className="post-likes-count">
-          {post.likesCount.toLocaleString()} {post.likesCount === 1 ? "like" : "likes"}
+          {(post.likesCount || 0).toLocaleString()}{" "}
+          {(post.likesCount || 0) === 1 ? "like" : "likes"}
         </div>
 
         {post.caption && <PostCaption post={post} />}
@@ -240,7 +256,7 @@ export default function PostCard({ post }) {
           onOpenDetail={(p) => setSelectedPostDetail(p)}
         />
 
-        <div className="post-timestamp">{post.createdAt}</div>
+        <div className="post-timestamp">{formatRelativeTime(post.createdAt)}</div>
       </div>
 
       <form className="post-add-comment-row" onSubmit={handleAddComment}>
@@ -250,13 +266,14 @@ export default function PostCard({ post }) {
           className="post-comment-input"
           value={commentInput}
           onChange={(e) => setCommentInput(e.target.value)}
+          disabled={submittingComment}
         />
         <button
           type="submit"
           className="post-comment-submit"
-          disabled={!commentInput.trim()}
+          disabled={!commentInput.trim() || submittingComment}
         >
-          Post
+          {submittingComment ? "..." : "Post"}
         </button>
       </form>
     </article>

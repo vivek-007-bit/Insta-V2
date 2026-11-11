@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Search as SearchIcon, X, CheckCircle2 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import userService from "../../services/userService";
 
 export default function SearchPanel({ isInline = false }) {
   const {
     isSearchOpen,
     setIsSearchOpen,
     suggestedUsers,
-    currentUser,
     recentSearches,
     addRecentSearch,
     removeRecentSearch,
@@ -16,27 +16,9 @@ export default function SearchPanel({ isInline = false }) {
   } = useApp();
 
   const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef(null);
-
-  // All searchable users pool
-  const allUsers = [
-    currentUser,
-    ...suggestedUsers,
-    {
-      id: "u_tokyo",
-      username: "tokyo_vibes",
-      fullName: "Tokyo Street Aesthetics",
-      avatar: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=150&auto=format&fit=crop&q=80",
-      isVerified: true
-    },
-    {
-      id: "u_coffee",
-      username: "barista_journal",
-      fullName: "Artisan Coffee Culture",
-      avatar: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop&q=80",
-      isVerified: false
-    }
-  ];
 
   // Auto focus input when opened
   useEffect(() => {
@@ -46,6 +28,7 @@ export default function SearchPanel({ isInline = false }) {
       }, 50);
     } else {
       setQuery("");
+      setSearchResults([]);
     }
   }, [isSearchOpen, isInline]);
 
@@ -60,16 +43,36 @@ export default function SearchPanel({ isInline = false }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSearchOpen, isInline, setIsSearchOpen]);
 
-  if (!isSearchOpen && !isInline) return null;
+  // Fetch real users from backend when query changes
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      return;
+    }
 
-  // Filtered results
-  const filteredUsers = query.trim()
-    ? allUsers.filter(
-        u =>
-          u.username.toLowerCase().includes(query.toLowerCase()) ||
-          u.fullName.toLowerCase().includes(query.toLowerCase())
-      )
-    : [];
+    let isCancelled = false;
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await userService.searchUsers(trimmed, 20);
+        if (!isCancelled && res && Array.isArray(res.users)) {
+          setSearchResults(res.users);
+        }
+      } catch {
+        if (!isCancelled) setSearchResults([]);
+      } finally {
+        if (!isCancelled) setSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  if (!isSearchOpen && !isInline) return null;
 
   const handleSelectUser = (user) => {
     addRecentSearch(user);
@@ -113,7 +116,7 @@ export default function SearchPanel({ isInline = false }) {
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search"
+              placeholder="Search users..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="search-input-field"
@@ -133,10 +136,12 @@ export default function SearchPanel({ isInline = false }) {
 
         <div className="search-panel-body">
           {query.trim() === "" ? (
-            /* Recent Searches Section */
+            /* Recent & Suggested Users Section */
             <div>
               <div className="search-section-header">
-                <span className="search-section-title">Recent</span>
+                <span className="search-section-title">
+                  {recentSearches.length > 0 ? "Recent" : "People on Insta-V2"}
+                </span>
                 {recentSearches.length > 0 && (
                   <button
                     className="search-clear-all-btn"
@@ -147,19 +152,19 @@ export default function SearchPanel({ isInline = false }) {
                 )}
               </div>
 
-              {recentSearches.length === 0 ? (
+              {recentSearches.length === 0 && suggestedUsers.length === 0 ? (
                 <div className="search-empty-state">
                   <p style={{ fontWeight: "600", fontSize: "var(--font-size-sm)" }}>No recent searches.</p>
                 </div>
               ) : (
                 <div className="search-results-list">
-                  {recentSearches.map(user => (
+                  {(recentSearches.length > 0 ? recentSearches : suggestedUsers).map((user) => (
                     <div
                       key={user.id || user.username}
                       className="search-result-item"
                     >
                       <Link
-                        to="/profile"
+                        to={`/profile/${user.username}`}
                         className="search-user-info"
                         onClick={() => handleSelectUser(user)}
                       >
@@ -179,25 +184,33 @@ export default function SearchPanel({ isInline = false }) {
                         </div>
                       </Link>
 
-                      <button
-                        className="search-delete-recent-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeRecentSearch(user.username);
-                        }}
-                        aria-label={`Remove ${user.username} from recent`}
-                      >
-                        <X size={16} />
-                      </button>
+                      {recentSearches.length > 0 && (
+                        <button
+                          className="search-delete-recent-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeRecentSearch(user.username);
+                          }}
+                          aria-label={`Remove ${user.username} from recent`}
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
           ) : (
-            /* Live Filtered Results */
+            /* Live Database Search Results */
             <div>
-              {filteredUsers.length === 0 ? (
+              {searching ? (
+                <div className="search-empty-state">
+                  <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+                    Searching...
+                  </p>
+                </div>
+              ) : searchResults.length === 0 ? (
                 <div className="search-empty-state">
                   <p style={{ fontWeight: "600", fontSize: "var(--font-size-base)" }}>No results found.</p>
                   <p style={{ fontSize: "var(--font-size-xs)" }}>
@@ -206,10 +219,10 @@ export default function SearchPanel({ isInline = false }) {
                 </div>
               ) : (
                 <div className="search-results-list">
-                  {filteredUsers.map(user => (
+                  {searchResults.map((user) => (
                     <Link
                       key={user.id || user.username}
-                      to="/profile"
+                      to={`/profile/${user.username}`}
                       className="search-result-item"
                       onClick={() => handleSelectUser(user)}
                     >

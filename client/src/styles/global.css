@@ -75,3 +75,10 @@ ul, ol {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

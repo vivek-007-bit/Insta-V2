@@ -11,8 +11,9 @@ import {
 import { useApp } from "../../context/AppContext";
 
 export function MobileTopBar() {
-  const { notifications, conversations, setIsSearchOpen } = useApp();
-  const unreadNotifs = notifications.filter(n => !n.isRead).length;
+  const { unreadCount, conversations, setIsSearchOpen } = useApp();
+  const totalUnreadNotifs = unreadCount || 0;
+  const unreadNotifsLabel = totalUnreadNotifs > 99 ? "99+" : totalUnreadNotifs;
   const unreadMsgs = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
   return (
@@ -40,7 +41,7 @@ export function MobileTopBar() {
       <div className="mobile-top-actions">
         <Link to="/notifications" className="mobile-nav-btn" aria-label="Notifications" onClick={() => setIsSearchOpen(false)}>
           <Heart size={24} />
-          {unreadNotifs > 0 && <span className="nav-badge">{unreadNotifs}</span>}
+          {totalUnreadNotifs > 0 && <span className="nav-badge">{unreadNotifsLabel}</span>}
         </Link>
         <Link to="/messages" className="mobile-nav-btn" aria-label="Direct Messages" onClick={() => setIsSearchOpen(false)}>
           <MessageCircle size={24} />

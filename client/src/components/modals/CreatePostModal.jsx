@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X, Image as ImageIcon, MapPin, ArrowLeft, RefreshCw, Trash2, Smile } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import mediaService from "../../services/mediaService";
 
 export default function CreatePostModal() {
   const { isCreateModalOpen, setIsCreateModalOpen, addNewPost, currentUser } = useApp();
@@ -11,6 +12,8 @@ export default function CreatePostModal() {
   const [location, setLocation] = useState("");
   const [mediaAspect, setMediaAspect] = useState("square");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
 
   const MAX_CAPTION_LENGTH = 2200;
@@ -27,17 +30,18 @@ export default function CreatePostModal() {
   // Handle ESC key to close modal
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === "Escape" && isCreateModalOpen) {
+      if (e.key === "Escape" && isCreateModalOpen && !isUploading) {
         handleClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isCreateModalOpen, previewUrl]);
+  }, [isCreateModalOpen, previewUrl, isUploading]);
 
   if (!isCreateModalOpen) return null;
 
   const handleClose = () => {
+    if (isUploading) return;
     if (previewUrl && previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -46,6 +50,8 @@ export default function CreatePostModal() {
     setCaption("");
     setLocation("");
     setErrorMessage("");
+    setIsUploading(false);
+    setUploadProgress(0);
     setIsCreateModalOpen(false);
   };
 
@@ -53,8 +59,11 @@ export default function CreatePostModal() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setErrorMessage("Please select a valid image file (JPG, PNG, WebP).");
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+
+    if (!isImage && !isVideo) {
+      setErrorMessage("Please select a valid image or video file.");
       return;
     }
 
@@ -68,31 +77,67 @@ export default function CreatePostModal() {
   };
 
   const handleRemoveImage = () => {
+    if (isUploading) return;
     if (previewUrl && previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(previewUrl);
     }
     setSelectedFile(null);
     setPreviewUrl(null);
     setErrorMessage("");
+    setUploadProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!previewUrl) {
-      setErrorMessage("Please choose a photo to share.");
+  const handleSubmit = async (e) => {
+    e?.preventDefault();
+    if (!selectedFile) {
+      setErrorMessage("Please choose a photo or video to share.");
       return;
     }
 
-    addNewPost({
-      mediaUrl: previewUrl,
-      caption,
-      location,
-      mediaAspect
-    });
+    setIsUploading(true);
+    setErrorMessage("");
+    setUploadProgress(0);
 
-    handleClose();
+    try {
+      // 1. Request upload signature from server
+      const isVideo = selectedFile.type.startsWith("video/");
+      const signatureData = await mediaService.getUploadSignature({
+        folder: "insta_v2/posts",
+        resourceType: isVideo ? "video" : "image"
+      });
+
+      // 2. Upload directly to Cloudinary using signed parameters
+      const uploadResult = await mediaService.uploadToCloudinary(
+        selectedFile,
+        signatureData,
+        (progress) => setUploadProgress(progress)
+      );
+
+      // 3. Save post metadata to backend database
+      const postResponse = await mediaService.createPost({
+        mediaUrl: uploadResult.mediaUrl,
+        publicId: uploadResult.publicId,
+        mediaType: uploadResult.mediaType,
+        caption,
+        location,
+        mediaAspect
+      });
+
+      // 4. Update frontend context with created post
+      addNewPost(postResponse.post);
+
+      // 5. Clean up & close
+      handleClose();
+    } catch (err) {
+      console.error("[CreatePostModal] Upload error:", err);
+      setErrorMessage(err.message || "Failed to upload and create post. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
   };
+
+  const isVideo = selectedFile?.type?.startsWith("video/");
 
   return (
     <div
@@ -106,17 +151,18 @@ export default function CreatePostModal() {
         className="modal-close-x"
         onClick={handleClose}
         aria-label="Close modal"
+        disabled={isUploading}
       >
         <X size={26} />
       </button>
 
       <div
         className="modal-container create-post-modal"
-        onClick={(e) => e.stopPropagation()} // Prevent accidental close on modal click
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="create-post-header">
-          {previewUrl ? (
+          {previewUrl && !isUploading ? (
             <button
               type="button"
               className="post-action-btn"
@@ -138,8 +184,13 @@ export default function CreatePostModal() {
               type="button"
               className="create-post-share-btn"
               onClick={handleSubmit}
+              disabled={isUploading}
             >
-              Share
+              {isUploading
+                ? uploadProgress > 0
+                  ? `Sharing ${uploadProgress}%`
+                  : "Sharing..."
+                : "Share"}
             </button>
           ) : (
             <div style={{ width: 24 }} />
@@ -155,9 +206,9 @@ export default function CreatePostModal() {
             </div>
 
             <div className="create-dropzone-text-group">
-              <h3 className="create-dropzone-title">Drag photos here</h3>
+              <h3 className="create-dropzone-title">Drag photos or videos here</h3>
               <p className="create-dropzone-sub">
-                Upload high resolution photos for your profile and feed
+                Upload high resolution photos and videos for your profile and feed
               </p>
             </div>
 
@@ -168,7 +219,7 @@ export default function CreatePostModal() {
             <input
               type="file"
               ref={fileInputRef}
-              accept="image/*"
+              accept="image/*,video/*"
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
@@ -182,16 +233,26 @@ export default function CreatePostModal() {
             </button>
           </div>
         ) : (
-          /* Redesigned Two-Panel Post Composer */
+          /* Two-Panel Post Composer */
           <div className="create-post-editor">
             {/* Left Panel: Media Preview */}
             <div className="create-preview-area">
               <div className={`create-preview-canvas create-aspect-${mediaAspect}`}>
-                <img
-                  src={previewUrl}
-                  alt="Upload preview"
-                  className="create-preview-img"
-                />
+                {isVideo ? (
+                  <video
+                    src={previewUrl}
+                    controls
+                    playsInline
+                    className="create-preview-img"
+                    style={{ objectFit: "cover", width: "100%", height: "100%" }}
+                  />
+                ) : (
+                  <img
+                    src={previewUrl}
+                    alt="Upload preview"
+                    className="create-preview-img"
+                  />
+                )}
               </div>
 
               {/* Bottom Media Controls (Ratio switcher & replace) */}
@@ -202,6 +263,7 @@ export default function CreatePostModal() {
                     className={`create-ratio-btn ${mediaAspect === "square" ? "active" : ""}`}
                     onClick={() => setMediaAspect("square")}
                     title="1:1 Square"
+                    disabled={isUploading}
                   >
                     1:1
                   </button>
@@ -210,6 +272,7 @@ export default function CreatePostModal() {
                     className={`create-ratio-btn ${mediaAspect === "portrait" ? "active" : ""}`}
                     onClick={() => setMediaAspect("portrait")}
                     title="4:5 Portrait"
+                    disabled={isUploading}
                   >
                     4:5
                   </button>
@@ -218,6 +281,7 @@ export default function CreatePostModal() {
                     className={`create-ratio-btn ${mediaAspect === "landscape" ? "active" : ""}`}
                     onClick={() => setMediaAspect("landscape")}
                     title="16:9 Landscape"
+                    disabled={isUploading}
                   >
                     16:9
                   </button>
@@ -229,6 +293,7 @@ export default function CreatePostModal() {
                     className="create-media-action-pill"
                     onClick={() => fileInputRef.current?.click()}
                     title="Replace image"
+                    disabled={isUploading}
                   >
                     <RefreshCw size={13} />
                     <span>Replace</span>
@@ -238,6 +303,7 @@ export default function CreatePostModal() {
                     className="create-media-action-pill danger"
                     onClick={handleRemoveImage}
                     title="Remove image"
+                    disabled={isUploading}
                   >
                     <Trash2 size={13} />
                     <span>Remove</span>
@@ -250,7 +316,7 @@ export default function CreatePostModal() {
             <input
               type="file"
               ref={fileInputRef}
-              accept="image/*"
+              accept="image/*,video/*"
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
@@ -260,11 +326,16 @@ export default function CreatePostModal() {
               {/* User row */}
               <div className="create-author-row">
                 <img
-                  src={currentUser.avatar}
-                  alt={currentUser.username}
+                  src={
+                    currentUser?.avatar ||
+                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+                  }
+                  alt={currentUser?.username || "user"}
                   className="create-author-avatar"
                 />
-                <span className="create-author-username">{currentUser.username}</span>
+                <span className="create-author-username">
+                  {currentUser?.username || "user"}
+                </span>
               </div>
 
               {/* Caption field */}
@@ -275,13 +346,15 @@ export default function CreatePostModal() {
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
                   maxLength={MAX_CAPTION_LENGTH}
+                  disabled={isUploading}
                 />
                 <div className="create-caption-footer">
                   <button
                     type="button"
                     className="create-emoji-btn"
                     title="Add emoji"
-                    onClick={() => setCaption(prev => prev + " ✨")}
+                    onClick={() => setCaption((prev) => prev + " ✨")}
+                    disabled={isUploading}
                   >
                     <Smile size={18} />
                   </button>
@@ -299,6 +372,7 @@ export default function CreatePostModal() {
                   className="create-location-input"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
+                  disabled={isUploading}
                 />
                 <MapPin size={16} className="create-location-icon" />
               </div>
@@ -314,8 +388,13 @@ export default function CreatePostModal() {
                   type="button"
                   className="create-submit-btn-full"
                   onClick={handleSubmit}
+                  disabled={isUploading}
                 >
-                  Share Post
+                  {isUploading
+                    ? uploadProgress > 0
+                      ? `Sharing... (${uploadProgress}%)`
+                      : "Sharing..."
+                    : "Share Post"}
                 </button>
               </div>
             </div>

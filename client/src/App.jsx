@@ -9,6 +9,7 @@ import Reels from "./pages/Reels";
 import Messages from "./pages/Messages";
 import Notifications from "./pages/Notifications";
 import Profile from "./pages/Profile";
+import PostView from "./pages/PostView";
 import Saved from "./pages/Saved";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
@@ -43,9 +44,12 @@ export default function App() {
             <Route index element={<Home />} />
             <Route path="search" element={<Search />} />
             <Route path="reels" element={<Reels />} />
+            <Route path="reels/:reelId" element={<Reels />} />
             <Route path="messages" element={<Messages />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
+            <Route path="profile/:username" element={<Profile />} />
+            <Route path="p/:postId" element={<PostView />} />
             <Route path="saved" element={<Saved />} />
             <Route path="settings" element={<Settings />} />
           </Route>
