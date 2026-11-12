@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   X,
@@ -12,7 +12,9 @@ import {
 import { useApp } from "../../context/AppContext";
 import CommentsSection from "../posts/CommentsSection";
 import ShareButton from "../posts/ShareButton";
+import MediaRenderer from "../shared/MediaRenderer";
 import { formatRelativeTime } from "../../utils/formatTime";
+import { optimizeMediaUrl, isVideoMedia, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
 
 export default function PostDetailModal() {
   const {
@@ -28,6 +30,51 @@ export default function PostDetailModal() {
   const [modalDims, setModalDims] = useState(null);
   const [submittingComment, setSubmittingComment] = useState(false);
   const commentInputRef = useRef(null);
+
+  const computeModalDimensions = useCallback((naturalWidth, naturalHeight) => {
+    if (!naturalWidth || !naturalHeight) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    if (vw <= 768) {
+      setModalDims(null);
+      return;
+    }
+
+    const naturalAspect = naturalWidth / naturalHeight;
+    const maxModalHeight = Math.min(vh - 64, 850);
+    const minModalHeight = 480;
+    const detailsWidth = 410;
+
+    let modalHeight;
+    let mediaWidth;
+
+    if (naturalAspect <= 0.82) {
+      modalHeight = maxModalHeight;
+      mediaWidth = Math.min(modalHeight * naturalAspect, 640);
+    } else if (naturalAspect <= 1.05) {
+      modalHeight = Math.min(maxModalHeight, 720);
+      mediaWidth = modalHeight;
+    } else if (naturalAspect <= 1.5) {
+      modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, 620 / naturalAspect));
+      mediaWidth = modalHeight * naturalAspect;
+    } else {
+      modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, 520));
+      mediaWidth = Math.min(modalHeight * naturalAspect, 680);
+    }
+
+    const maxAvailableMediaWidth = Math.max(300, vw - detailsWidth - 96);
+    if (mediaWidth > maxAvailableMediaWidth) {
+      mediaWidth = maxAvailableMediaWidth;
+      modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, mediaWidth / naturalAspect));
+    }
+
+    setModalDims({
+      height: `${Math.round(modalHeight)}px`,
+      width: `${Math.round(mediaWidth + detailsWidth)}px`,
+      mediaWidth: `${Math.round(mediaWidth)}px`
+    });
+  }, []);
 
   // Close on Escape key
   useEffect(() => {
@@ -51,64 +98,29 @@ export default function PostDetailModal() {
     }
   }, [selectedPostDetail]);
 
-  // Compute proportional dimensions based on natural media aspect ratio on desktop
+  // Reset and compute proportional dimensions whenever selected post changes
   useEffect(() => {
+    setModalDims(null);
+
     if (!selectedPostDetail?.mediaUrl) return;
+    if (isVideoMedia(selectedPostDetail.mediaUrl, selectedPostDetail.mediaType)) {
+      // Video dimensions are calculated via onVideoMetadata callback
+      return;
+    }
 
     let isMounted = true;
     const img = new Image();
-    img.src = selectedPostDetail.mediaUrl;
+    img.src = optimizeMediaUrl(selectedPostDetail.mediaUrl, { width: 1200 });
     img.onload = () => {
-      if (!isMounted || !img.naturalWidth || !img.naturalHeight) return;
-      const naturalAspect = img.naturalWidth / img.naturalHeight;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      if (vw <= 768) {
-        if (isMounted) setModalDims(null);
-        return;
-      }
-
-      const maxModalHeight = Math.min(vh - 64, 850);
-      const minModalHeight = 480;
-      const detailsWidth = 410;
-
-      let modalHeight;
-      let mediaWidth;
-
-      if (naturalAspect <= 0.82) {
-        modalHeight = maxModalHeight;
-        mediaWidth = Math.min(modalHeight * naturalAspect, 640);
-      } else if (naturalAspect <= 1.05) {
-        modalHeight = Math.min(maxModalHeight, 720);
-        mediaWidth = modalHeight;
-      } else if (naturalAspect <= 1.5) {
-        modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, 620 / naturalAspect));
-        mediaWidth = modalHeight * naturalAspect;
-      } else {
-        modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, 520));
-        mediaWidth = Math.min(modalHeight * naturalAspect, 680);
-      }
-
-      const maxAvailableMediaWidth = Math.max(300, vw - detailsWidth - 96);
-      if (mediaWidth > maxAvailableMediaWidth) {
-        mediaWidth = maxAvailableMediaWidth;
-        modalHeight = Math.max(minModalHeight, Math.min(maxModalHeight, mediaWidth / naturalAspect));
-      }
-
       if (isMounted) {
-        setModalDims({
-          height: `${Math.round(modalHeight)}px`,
-          width: `${Math.round(mediaWidth + detailsWidth)}px`,
-          mediaWidth: `${Math.round(mediaWidth)}px`
-        });
+        computeModalDimensions(img.naturalWidth, img.naturalHeight);
       }
     };
 
     return () => {
       isMounted = false;
     };
-  }, [selectedPostDetail?.mediaUrl]);
+  }, [selectedPostDetail?.id, selectedPostDetail?.mediaUrl, selectedPostDetail?.mediaType, computeModalDimensions]);
 
   if (!selectedPostDetail) return null;
 
@@ -131,7 +143,9 @@ export default function PostDetailModal() {
     commentInputRef.current?.focus();
   };
 
-  const isVideo = selectedPostDetail.mediaType === "video";
+  const authorAvatar =
+    optimizeMediaUrl(selectedPostDetail.author?.avatar, { width: 150, isAvatar: true }) ||
+    getAvatarFallbackUrl(selectedPostDetail.author?.username);
 
   return (
     <div
@@ -157,23 +171,21 @@ export default function PostDetailModal() {
         {/* Left Column: Media Panel */}
         <div
           className="post-detail-media"
-          style={modalDims?.mediaWidth ? { width: modalDims.mediaWidth, flex: `0 0 ${modalDims.mediaWidth}` } : undefined}
+          style={
+            modalDims?.mediaWidth
+              ? { width: modalDims.mediaWidth, flex: `0 0 ${modalDims.mediaWidth}` }
+              : undefined
+          }
         >
-          {isVideo ? (
-            <video
-              src={selectedPostDetail.mediaUrl}
-              controls
-              playsInline
-              className="post-detail-img"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            <img
-              src={selectedPostDetail.mediaUrl}
-              alt={selectedPostDetail.caption || "Post detail"}
-              className="post-detail-img"
-            />
-          )}
+          <MediaRenderer
+            key={selectedPostDetail.id}
+            src={selectedPostDetail.mediaUrl}
+            mediaType={selectedPostDetail.mediaType}
+            alt={selectedPostDetail.caption || "Post detail"}
+            variant="modal"
+            className="post-detail-img"
+            onVideoMetadata={({ width, height }) => computeModalDimensions(width, height)}
+          />
         </div>
 
         {/* Right Column: Post Details Panel */}
@@ -188,9 +200,13 @@ export default function PostDetailModal() {
                 title={selectedPostDetail.author.username}
               >
                 <img
-                  src={selectedPostDetail.author.avatar}
+                  src={authorAvatar}
                   alt={selectedPostDetail.author.username}
                   className="post-detail-author-avatar"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = getAvatarFallbackUrl(selectedPostDetail.author?.username);
+                  }}
                 />
               </Link>
               <div className="post-detail-header-meta">

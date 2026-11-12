@@ -1,6 +1,12 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import { signup, login, logout, getMe } from '../controllers/authController.js';
+import {
+  signup,
+  login,
+  logout,
+  getMe,
+  checkUsernameAvailability
+} from '../controllers/authController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -17,6 +23,18 @@ const authLimiter = rateLimit({
   }
 });
 
+const usernameCheckLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many username checks. Please wait a moment.'
+  }
+});
+
+router.get('/check-username', usernameCheckLimiter, checkUsernameAvailability);
 router.post('/signup', authLimiter, signup);
 router.post('/login', authLimiter, login);
 router.post('/logout', logout);

@@ -6,6 +6,7 @@ import {
   updateMyProfile,
   getUserProfile,
   getUserPosts,
+  getUserReels,
   followUser,
   unfollowUser,
   getFollowers,
@@ -22,6 +23,7 @@ router.patch('/me/privacy', protect, updatePrivacy);
 router.patch('/me/profile', protect, updateMyProfile);
 router.get('/:userId/profile', protect, getUserProfile);
 router.get('/:userId/posts', protect, getUserPosts);
+router.get('/:userId/reels', protect, getUserReels);
 router.post('/:userId/follow', protect, followUser);
 router.delete('/:userId/follow', protect, unfollowUser);
 router.get('/:userId/followers', protect, getFollowers);

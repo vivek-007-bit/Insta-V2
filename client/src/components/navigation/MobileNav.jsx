@@ -9,6 +9,7 @@ import {
   Search
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
 
 export function MobileTopBar() {
   const { unreadCount, conversations, setIsSearchOpen } = useApp();
@@ -109,9 +110,16 @@ export function MobileBottomBar() {
         onClick={() => setIsSearchOpen(false)}
       >
         <img
-          src={currentUser.avatar}
+          src={
+            optimizeMediaUrl(currentUser.avatar, { width: 100, isAvatar: true }) ||
+            getAvatarFallbackUrl(currentUser.username)
+          }
           alt={currentUser.username}
           className={`nav-avatar-mini ${isActive("/profile") ? "active-ring" : ""}`}
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = getAvatarFallbackUrl(currentUser.username);
+          }}
         />
       </Link>
     </nav>

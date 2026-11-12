@@ -48,10 +48,11 @@ const buildCloudinaryThumbnail = (publicId) => {
 
 // Enrich reels with creator follow status and viewer like status
 const enrichReelsForViewer = async (reels, viewerId) => {
-  if (!reels || reels.length === 0) return [];
+  const validReels = (reels || []).filter((r) => r && r.user);
+  if (validReels.length === 0) return [];
 
-  const reelIds = reels.map((r) => r._id);
-  const authorIds = [...new Set(reels.map((r) => r.user._id.toString()))];
+  const reelIds = validReels.map((r) => r._id);
+  const authorIds = [...new Set(validReels.map((r) => r.user._id.toString()))];
 
   const [userLikes, follows, pendingReqs] = await Promise.all([
     ReelLike.find({ user: viewerId, reel: { $in: reelIds } }).select('reel'),
@@ -69,7 +70,7 @@ const enrichReelsForViewer = async (reels, viewerId) => {
     pendingReqs.map((req) => [req.recipient.toString(), req._id.toString()])
   );
 
-  return reels.map((r) => {
+  return validReels.map((r) => {
     const rid = r._id.toString();
     const authorId = r.user._id.toString();
     const isSelf = viewerId && viewerId.toString() === authorId;

@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import Follow from '../models/Follow.js';
 import FollowRequest from '../models/FollowRequest.js';
 import Post from '../models/Post.js';
+import Reel from '../models/Reel.js';
+import ReelLike from '../models/ReelLike.js';
 import Like from '../models/Like.js';
 import Comment from '../models/Comment.js';
 import { canViewUserContent } from '../middleware/privacyMiddleware.js';
@@ -87,14 +89,15 @@ const enrichUsersWithFollowStatus = async (viewerId, users) => {
 // @access  Private
 export const searchUsers = async (req, res, next) => {
   try {
-    const query = (req.query.q || '').trim();
+    const rawQuery = (req.query.q || '').trim();
+    const escapedQuery = rawQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
 
-    const filter = query
+    const filter = escapedQuery
       ? {
           $or: [
-            { username: { $regex: query, $options: 'i' } },
-            { fullName: { $regex: query, $options: 'i' } }
+            { username: { $regex: escapedQuery, $options: 'i' } },
+            { fullName: { $regex: escapedQuery, $options: 'i' } }
           ]
         }
       : {};
@@ -356,33 +359,43 @@ export const getUserPosts = async (req, res, next) => {
       }
     }
 
-    const formattedPosts = posts.map((p) => {
-      const pid = p._id.toString();
-      return {
-        id: pid,
-        _id: pid,
-        author: {
-          id: p.user._id.toString(),
-          username: p.user.username,
-          fullName: p.user.fullName,
-          avatar: p.user.avatar,
-          isPrivate: Boolean(p.user.isPrivate),
-          isVerified: false
-        },
-        location: p.location || '',
-        mediaUrl: p.mediaUrl,
-        publicId: p.publicId,
-        mediaType: p.mediaType,
-        mediaAspect: p.mediaAspect,
-        caption: p.caption,
-        likesCount: p.likesCount || 0,
-        commentsCount: p.commentsCount || 0,
-        isLiked: likedPostIds.has(pid),
-        isSaved: false,
-        comments: (commentsByPost.get(pid) || []).reverse(),
-        createdAt: p.createdAt
-      };
-    });
+    const formattedPosts = posts
+      .filter((p) => p && p.user)
+      .map((p) => {
+        const pid = p._id.toString();
+        const secureMediaUrl =
+          p.mediaUrl && p.mediaUrl.startsWith('http://res.cloudinary.com')
+            ? p.mediaUrl.replace('http://', 'https://')
+            : p.mediaUrl;
+        const secureAvatar =
+          p.user.avatar && p.user.avatar.startsWith('http://res.cloudinary.com')
+            ? p.user.avatar.replace('http://', 'https://')
+            : p.user.avatar;
+        return {
+          id: pid,
+          _id: pid,
+          author: {
+            id: p.user._id.toString(),
+            username: p.user.username,
+            fullName: p.user.fullName,
+            avatar: secureAvatar,
+            isPrivate: Boolean(p.user.isPrivate),
+            isVerified: false
+          },
+          location: p.location || '',
+          mediaUrl: secureMediaUrl,
+          publicId: p.publicId,
+          mediaType: p.mediaType,
+          mediaAspect: p.mediaAspect,
+          caption: p.caption,
+          likesCount: p.likesCount || 0,
+          commentsCount: p.commentsCount || 0,
+          isLiked: likedPostIds.has(pid),
+          isSaved: false,
+          comments: (commentsByPost.get(pid) || []).reverse(),
+          createdAt: p.createdAt
+        };
+      });
 
     return res.status(200).json({
       success: true,
@@ -390,6 +403,89 @@ export const getUserPosts = async (req, res, next) => {
       totalPosts,
       page,
       hasMore: skip + posts.length < totalPosts
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get a user's reels (enforces private account rules)
+// @route   GET /api/users/:userId/reels
+// @access  Private
+export const getUserReels = async (req, res, next) => {
+  try {
+    const targetUser = await findUserByIdOrUsername(req.params.userId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const allowed = await canViewUserContent(req.user._id, targetUser._id);
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'This account is private. Follow this user to see their reels.'
+      });
+    }
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 18, 50);
+    const skip = (page - 1) * limit;
+
+    const [reels, totalReels] = await Promise.all([
+      Reel.find({ user: targetUser._id })
+        .populate('user', 'fullName username avatar isPrivate')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Reel.countDocuments({ user: targetUser._id })
+    ]);
+
+    const reelIds = reels.map((r) => r._id);
+    const userLikes = await ReelLike.find({ user: req.user._id, reel: { $in: reelIds } }).select('reel');
+    const likedReelIds = new Set(userLikes.map((l) => l.reel.toString()));
+
+    const formattedReels = reels
+      .filter((r) => r && r.user)
+      .map((r) => {
+        const rid = r._id.toString();
+        const secureVideo =
+          r.videoUrl && r.videoUrl.startsWith('http://res.cloudinary.com')
+            ? r.videoUrl.replace('http://', 'https://')
+            : r.videoUrl;
+        const secureThumb =
+          r.thumbnailUrl && r.thumbnailUrl.startsWith('http://res.cloudinary.com')
+            ? r.thumbnailUrl.replace('http://', 'https://')
+            : r.thumbnailUrl;
+        return {
+          id: rid,
+          _id: rid,
+          author: {
+            id: r.user._id.toString(),
+            username: r.user.username,
+            fullName: r.user.fullName,
+            avatar: r.user.avatar,
+            isPrivate: Boolean(r.user.isPrivate),
+            isVerified: false
+          },
+          videoUrl: secureVideo,
+          thumbnailUrl: secureThumb || '',
+          posterUrl: secureThumb || '',
+          caption: r.caption || '',
+          audioTrack: r.audioTrack || `${r.user.username} • Original Audio`,
+          likesCount: r.likesCount || 0,
+          commentsCount: r.commentsCount || 0,
+          sharesCount: r.sharesCount || 0,
+          isLiked: likedReelIds.has(rid),
+          createdAt: r.createdAt
+        };
+      });
+
+    return res.status(200).json({
+      success: true,
+      reels: formattedReels,
+      totalReels,
+      page,
+      hasMore: skip + reels.length < totalReels
     });
   } catch (error) {
     next(error);

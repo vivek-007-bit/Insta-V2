@@ -1,7 +1,23 @@
+# Netlify configuration for Insta-V2 React + Vite frontend
+# Single source of truth for frontend build, API proxying, and SPA routing.
+
 [build]
   command = "npm run build"
   publish = "dist"
 
+# 1. Backend API Proxy (evaluated before SPA fallback)
+# Replace YOUR_BACKEND_HOST with your deployed backend host (e.g. your Vercel backend domain)
+# and set VITE_API_BASE_URL=/api in Netlify environment variables so HTTP-only cookies stay first-party.
+# Note: Netlify does not interpolate runtime env vars inside netlify.toml redirect targets.
+[[redirects]]
+  from = "/api/*"
+  to = "https://YOUR_BACKEND_HOST/api/:splat"
+  status = 200
+  force = true
+
+# 2. React Router SPA Fallback (serves index.html for client-side routes like /, /login, /signup,
+# /explore, /reels, /notifications, /messages, /profile, /profile/:username, etc.;
+# force=false ensures static assets in dist/ are served directly without redirection)
 [[redirects]]
   from = "/*"
   to = "/index.html"

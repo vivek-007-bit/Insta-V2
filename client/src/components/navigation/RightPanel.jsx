@@ -2,11 +2,16 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import FollowButton from "../shared/FollowButton";
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
 
 export default function RightPanel() {
   const { currentUser, suggestedUsers, showToast } = useApp();
 
   if (!currentUser) return null;
+
+  const currentAvatar =
+    optimizeMediaUrl(currentUser.avatar, { width: 150, isAvatar: true }) ||
+    getAvatarFallbackUrl(currentUser.username);
 
   return (
     <aside className="right-panel" aria-label="Suggested for you">
@@ -14,9 +19,13 @@ export default function RightPanel() {
       <div className="current-user-card">
         <Link to="/profile" className="user-card-info">
           <img
-            src={currentUser.avatar}
+            src={currentAvatar}
             alt={currentUser.username}
             className="user-card-avatar"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = getAvatarFallbackUrl(currentUser.username);
+            }}
           />
           <div className="user-card-names">
             <span className="user-card-username">{currentUser.username}</span>
@@ -47,9 +56,16 @@ export default function RightPanel() {
             <div key={user.id} className="suggestion-item">
               <Link to={`/profile/${user.username}`} className="suggestion-user-info">
                 <img
-                  src={user.avatar}
+                  src={
+                    optimizeMediaUrl(user.avatar, { width: 150, isAvatar: true }) ||
+                    getAvatarFallbackUrl(user.username)
+                  }
                   alt={user.username}
                   className="suggestion-avatar"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = getAvatarFallbackUrl(user.username);
+                  }}
                 />
                 <div className="suggestion-names">
                   <span className="suggestion-username">{user.username}</span>

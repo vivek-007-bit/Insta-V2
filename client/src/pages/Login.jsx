@@ -1,12 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation, Navigate } from "react-router-dom";
 import AuthLayout, { InstagramCameraGlyph } from "../components/auth/AuthLayout";
 import AuthInput from "../components/auth/AuthInput";
 import { useApp } from "../context/AppContext";
-import { Sparkles, HelpCircle } from "lucide-react";
+import { HelpCircle, Loader2, X } from "lucide-react";
 
 export default function Login() {
-  const { login, isAuthenticated, authenticationLoading } = useApp();
+  const { login, isAuthenticated, authLoading, authError, fetchCurrentUser } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -19,36 +19,31 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
 
-  // While checking existing session, show minimal loading
-  if (authenticationLoading) {
+  const rawFrom = location.state?.from;
+  const safeDestination =
+    rawFrom?.pathname && rawFrom.pathname !== "/login" && rawFrom.pathname !== "/signup"
+      ? `${rawFrom.pathname}${rawFrom.search || ""}${rawFrom.hash || ""}`
+      : "/";
+
+  useEffect(() => {
+    if (!showForgotModal) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setShowForgotModal(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showForgotModal]);
+
+  if (authLoading) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "100vh",
-          background: "var(--bg-primary)"
-        }}
-      >
-        <div
-          style={{
-            width: "36px",
-            height: "36px",
-            border: "3px solid var(--border-subtle)",
-            borderTopColor: "var(--accent-blue)",
-            borderRadius: "50%",
-            animation: "spin 0.8s linear infinite"
-          }}
-        />
+      <div className="auth-session-loader" role="status" aria-label="Checking session">
+        <div className="auth-session-spinner" />
       </div>
     );
   }
 
-  // If already authenticated, redirect to previous location or home
   if (isAuthenticated) {
-    const fromPath = location.state?.from?.pathname || "/";
-    return <Navigate to={fromPath} replace />;
+    return <Navigate to={safeDestination} replace />;
   }
 
   const handleChange = (e) => {
@@ -62,8 +57,9 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const newErrors = {};
+    if (isSubmitting) return;
 
+    const newErrors = {};
     if (!formData.identifier.trim()) {
       newErrors.identifier = "Phone number, username, or email is required.";
     }
@@ -82,43 +78,30 @@ export default function Login() {
     try {
       const result = await login(formData.identifier, formData.password);
       if (result.success) {
-        const destination = location.state?.from?.pathname || "/";
-        navigate(destination, { replace: true });
+        navigate(safeDestination, { replace: true });
       } else {
-        setFormError(result.error || "Failed to log in");
+        setFormError(result.error || "Sorry, your username or password was incorrect.");
       }
     } catch (err) {
-      setFormError(err.message || "An unexpected error occurred during login");
+      setFormError(err.message || "An unexpected error occurred during login.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleQuickDemo = (username = "insta_creator") => {
-    setFormData((prev) => ({ ...prev, identifier: username }));
-    setFormError("Please enter the password for this account, or register a new account on the Sign up page.");
-  };
+  const canSubmit = Boolean(formData.identifier.trim() && formData.password) && !isSubmitting;
 
   return (
     <AuthLayout>
-      {/* 1. Main Login Card */}
-      <div className="auth-card">
-        {/* Brand Header */}
+      {/* Primary Login Card */}
+      <div className="auth-card auth-login-card">
         <Link to="/" className="auth-brand-logo" title="Insta-V2">
           <div className="auth-brand-glyph">
-            <InstagramCameraGlyph size={32} />
+            <InstagramCameraGlyph size={28} />
           </div>
           <span className="auth-brand-text">Insta-V2</span>
         </Link>
 
-        {/* OR Divider */}
-        <div className="auth-divider">
-          <div className="auth-divider-line" />
-          <span className="auth-divider-text">OR</span>
-          <div className="auth-divider-line" />
-        </div>
-
-        {/* Login Form */}
         <form className="auth-form" onSubmit={handleSubmit} noValidate>
           <AuthInput
             id="login-identifier"
@@ -147,20 +130,40 @@ export default function Login() {
           <button
             type="submit"
             className="auth-submit-btn"
-            disabled={!formData.identifier.trim() || !formData.password || isSubmitting}
+            disabled={!canSubmit}
           >
-            {isSubmitting ? "Logging in..." : "Log in"}
+            {isSubmitting ? (
+              <span className="auth-btn-loading">
+                <Loader2 size={15} className="auth-spin" />
+                Logging in...
+              </span>
+            ) : (
+              "Log in"
+            )}
           </button>
         </form>
 
-        {/* Inline General Error Alert */}
-        {formError && (
+        {(formError || authError) && (
           <div className="auth-error-alert" role="alert">
-            {formError}
+            <span>{formError || authError}</span>
+            {!formError && authError && (
+              <button
+                type="button"
+                className="auth-retry-inline-btn"
+                onClick={() => fetchCurrentUser()}
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
 
-        {/* Forgot Password Link */}
+        <div className="auth-divider">
+          <div className="auth-divider-line" />
+          <span className="auth-divider-text">OR</span>
+          <div className="auth-divider-line" />
+        </div>
+
         <button
           type="button"
           className="auth-forgot-link"
@@ -170,70 +173,57 @@ export default function Login() {
         </button>
       </div>
 
-      {/* 2. Switch to Sign-up Card */}
+      {/* Sign up Prompt Card */}
       <div className="auth-switch-card">
         Don't have an account? <Link to="/signup">Sign up</Link>
       </div>
 
-      {/* Forgot Password Modal */}
+      {/* Help / Account Recovery Dialog */}
       {showForgotModal && (
         <div
           className="modal-overlay"
           onClick={() => setShowForgotModal(false)}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="forgot-modal-title"
         >
           <div
-            className="modal-container options-modal"
-            style={{ padding: "28px 24px", maxWidth: "380px", textAlign: "center" }}
+            className="modal-container auth-help-modal"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
-              <div
-                style={{
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "50%",
-                  border: "2px solid var(--text-primary)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-              >
-                <HelpCircle size={28} />
-              </div>
+            <button
+              type="button"
+              className="auth-help-close"
+              onClick={() => setShowForgotModal(false)}
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+            <div className="auth-help-icon">
+              <HelpCircle size={28} />
             </div>
-            <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "8px" }}>
+            <h3 id="forgot-modal-title" className="auth-help-title">
               Trouble logging in?
             </h3>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "var(--text-secondary)",
-                lineHeight: "1.5",
-                marginBottom: "20px"
-              }}
-            >
-              Please enter your username or registered email and password to log in. If you do not have an account yet, create one on the sign-up page.
+            <p className="auth-help-text">
+              Sign in using your registered username or email address and password. If you do not have an account yet, you can create one in seconds.
             </p>
             <button
               type="button"
               className="auth-submit-btn"
-              style={{ margin: "0 auto", width: "100%" }}
               onClick={() => {
                 setShowForgotModal(false);
                 navigate("/signup");
               }}
             >
-              Create New Account
+              Create new account
             </button>
             <button
               type="button"
-              className="auth-forgot-link"
-              style={{ marginTop: "14px", display: "inline-block" }}
+              className="auth-help-back-btn"
               onClick={() => setShowForgotModal(false)}
             >
-              Back to Login
+              Back to login
             </button>
           </div>
         </div>

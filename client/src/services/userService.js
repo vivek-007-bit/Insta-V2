@@ -23,6 +23,13 @@ export const userService = {
     });
   },
 
+  // Get user reels (paginated)
+  getUserReels: async (userId, page = 1, limit = 18) => {
+    return await api.get(`/users/${encodeURIComponent(userId)}/reels`, {
+      params: { page, limit }
+    });
+  },
+
   // Follow a user (public -> immediate, private -> pending request)
   followUser: async (userId) => {
     return await api.post(`/users/${encodeURIComponent(userId)}/follow`);

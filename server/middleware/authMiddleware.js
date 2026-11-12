@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
+import { getJwtSecret, clearTokenCookie } from '../utils/generateToken.js';
 
 export const protect = async (req, res, next) => {
   let token = req.cookies?.token;
@@ -9,29 +11,18 @@ export const protect = async (req, res, next) => {
     token = req.headers.authorization.split(' ')[1];
   }
 
-  if (!token) {
+  if (!token || typeof token !== 'string' || !token.trim()) {
     return res.status(401).json({
       success: false,
-      message: 'Not authorized, please log in'
+      message: 'Authentication required'
     });
   }
 
+  let decoded;
   try {
-    const secret = process.env.JWT_SECRET || process.env.SECRET_KEY || 'default_jwt_secret_insta_v2';
-    const decoded = jwt.verify(token, secret);
-
-    const user = await User.findById(decoded.id).select('-password');
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User belonging to this token no longer exists'
-      });
-    }
-
-    req.user = user;
-    next();
+    decoded = jwt.verify(token.trim(), getJwtSecret());
   } catch (error) {
-    console.error('[Auth Middleware] Verification error:', error.message);
+    clearTokenCookie(res, req);
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
@@ -42,5 +33,30 @@ export const protect = async (req, res, next) => {
       success: false,
       message: 'Invalid authorization token'
     });
+  }
+
+  if (!decoded?.id || !mongoose.Types.ObjectId.isValid(decoded.id)) {
+    clearTokenCookie(res, req);
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid authorization token'
+    });
+  }
+
+  try {
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user || user.isDisabled || user.isActive === false) {
+      clearTokenCookie(res, req);
+      return res.status(401).json({
+        success: false,
+        message: 'User belonging to this token no longer exists'
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (dbError) {
+    console.error('[Auth Middleware] Database lookup error:', dbError.message);
+    next(dbError);
   }
 };

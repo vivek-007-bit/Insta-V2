@@ -1,6 +1,6 @@
 import React from "react";
 import AuthFooter from "./AuthFooter";
-import { Heart, MessageCircle, Send } from "lucide-react";
+import { Heart, MessageCircle, Send, Bookmark } from "lucide-react";
 
 export function InstagramCameraGlyph({ size = 32, className = "" }) {
   return (
@@ -27,19 +27,25 @@ export default function AuthLayout({ children }) {
   return (
     <div className="auth-page-wrapper">
       <main className="auth-main-container">
-        {/* Left Side: Instagram Phone Mockup Preview (Screens >= 876px) */}
-        <div className="auth-phone-preview" aria-hidden="true">
+        {/* Left Side: Instagram-style Dual Device Showcase (Desktop >= 876px) */}
+        <div className="auth-visual-showcase" aria-hidden="true">
+          <div className="showcase-phone-back">
+            <img
+              src="https://images.unsplash.com/photo-1519681393784-d120267933ba?w=600&auto=format&fit=crop&q=80"
+              alt="Alpine twilight"
+            />
+          </div>
+
           <div className="phone-mockup-frame">
             <div className="phone-notch">
               <div className="phone-speaker" />
             </div>
             <div className="phone-screen-content">
-              {/* Phone app header */}
               <div className="phone-screen-header">
-                <span>Insta-V2</span>
+                <span className="phone-wordmark">Insta-V2</span>
                 <Heart size={16} />
               </div>
-              {/* Phone stories strip */}
+
               <div className="phone-story-strip-mini">
                 <div className="phone-story-bubble">
                   <img
@@ -59,25 +65,37 @@ export default function AuthLayout({ children }) {
                     alt="Story author"
                   />
                 </div>
+                <div className="phone-story-bubble">
+                  <img
+                    src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80"
+                    alt="Story author"
+                  />
+                </div>
               </div>
-              {/* Phone feed post preview */}
+
               <div className="phone-post-card-mini">
                 <div className="phone-post-header-mini">
                   <img
                     src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80"
-                    alt="Elena"
+                    alt="Maya Lin"
                   />
-                  <span>elena_designs</span>
+                  <span>maya.lin</span>
                 </div>
                 <img
                   src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=600&auto=format&fit=crop&q=80"
-                  alt="Post preview"
+                  alt="Kyoto sunset view"
                   className="phone-post-img-mini"
                 />
                 <div className="phone-post-actions-mini">
-                  <Heart size={16} fill="var(--accent-red)" stroke="var(--accent-red)" />
-                  <MessageCircle size={16} />
-                  <Send size={16} />
+                  <div className="phone-post-actions-left">
+                    <Heart size={16} fill="var(--accent-red)" stroke="var(--accent-red)" />
+                    <MessageCircle size={16} />
+                    <Send size={16} />
+                  </div>
+                  <Bookmark size={16} />
+                </div>
+                <div className="phone-post-caption-mini">
+                  <strong>maya.lin</strong> Golden hour reflections in Kyoto
                 </div>
               </div>
             </div>
@@ -87,14 +105,9 @@ export default function AuthLayout({ children }) {
         {/* Right Side: Auth Form Cards */}
         <div className="auth-forms-column">
           {children}
-
-          <div className="auth-demo-note">
-            🚀 <strong>Frontend-Only Simulation:</strong> No database or server backend is connected.
-          </div>
         </div>
       </main>
 
-      {/* Global Auth Footer */}
       <AuthFooter />
     </div>
   );

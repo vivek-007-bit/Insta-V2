@@ -9,19 +9,29 @@ import {
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { formatRelativeTime } from "../../utils/formatTime";
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
+import MediaRenderer from "../shared/MediaRenderer";
 import ShareButton from "./ShareButton";
 
 export function PostHeader({ post, onMoreClick }) {
   const profileLink = `/profile/${post.author.username}`;
+  const avatarSrc = optimizeMediaUrl(post.author?.avatar, {
+    width: 150,
+    isAvatar: true
+  }) || getAvatarFallbackUrl(post.author?.username);
 
   return (
     <div className="post-header">
       <div className="post-header-left">
         <Link to={profileLink} className="post-author-avatar-wrap">
           <img
-            src={post.author.avatar}
+            src={avatarSrc}
             alt={post.author.username}
             className="post-author-avatar"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = getAvatarFallbackUrl(post.author?.username);
+            }}
           />
         </Link>
         <div className="post-header-meta">
@@ -74,29 +84,15 @@ export function PostMedia({ post, onDoubleClick }) {
       onDoubleClick={handleDoubleClick}
       title="Double click to like"
     >
-      {post.mediaType === "video" ? (
-        <video
-          src={post.mediaUrl}
-          controls
-          playsInline
-          className="post-media-img"
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
-      ) : (
-        <img
-          src={post.mediaUrl}
-          alt={post.caption || "Post media"}
-          className="post-media-img"
-          loading="lazy"
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src =
-              "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=600&auto=format&fit=crop&q=80";
-          }}
-        />
-      )}
+      <MediaRenderer
+        src={post.mediaUrl}
+        mediaType={post.mediaType}
+        alt={post.caption || "Post media"}
+        variant="feed"
+        className="post-media-img"
+      />
       {showHeart && (
-        <div className="post-heart-animation">
+        <div className="post-heart-animation" style={{ zIndex: 5 }}>
           <Heart size={90} fill="#ffffff" stroke="#ffffff" />
         </div>
       )}

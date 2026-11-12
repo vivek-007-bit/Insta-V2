@@ -1,6 +1,7 @@
 import React from "react";
 import { Bookmark } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import MediaRenderer from "../components/shared/MediaRenderer";
 
 export default function Saved() {
   const { posts, savedPostIds, setSelectedPostDetail } = useApp();
@@ -47,10 +48,11 @@ export default function Saved() {
                 borderRadius: "var(--radius-xs)"
               }}
             >
-              <img
+              <MediaRenderer
                 src={post.mediaUrl}
+                mediaType={post.mediaType}
                 alt={post.caption || "Saved post"}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                variant="grid"
               />
             </div>
           ))}

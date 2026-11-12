@@ -5,35 +5,167 @@ import postService from "../services/postService";
 import userService from "../services/userService";
 import followRequestService from "../services/followRequestService";
 import notificationService from "../services/notificationService";
+import storyService from "../services/storyService";
+import messageService from "../services/messageService";
+import searchService, { clearSearchCache } from "../services/searchService";
 import {
-  INITIAL_STORIES,
-  INITIAL_CONVERSATIONS,
   INITIAL_REELS
 } from "../data/demoData";
 
 const AppContext = createContext();
 
+// Module-level deduplication for concurrent mount / StrictMode GET /api/auth/me calls
+let inFlightMePromise = null;
+
 export function AppProvider({ children }) {
-  // Search Panel overlay state
+  // Search Panel overlay & persistent query/tab state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchCategory, setSearchCategory] = useState("all");
 
-  // Recent searches state
+  // MongoDB-backed recent searches state
   const [recentSearches, setRecentSearches] = useState([]);
+  const [recentSearchesLoading, setRecentSearchesLoading] = useState(false);
 
-  const addRecentSearch = (user) => {
+  const fetchRecentSearches = useCallback(async () => {
+    setRecentSearchesLoading(true);
+    try {
+      const res = await searchService.getRecentSearches();
+      if (res && Array.isArray(res.recent)) {
+        setRecentSearches(res.recent);
+      }
+    } catch (err) {
+      console.error("[Search] Error fetching recent searches:", err.message);
+    } finally {
+      setRecentSearchesLoading(false);
+    }
+  }, []);
+
+  const addRecentSearch = useCallback(async (input) => {
+    if (!input) return;
+
+    let payload = null;
+    let optimisticItem = null;
+    const nowIso = new Date().toISOString();
+
+    if (input.type === "hashtag" || (typeof input === "string" && input.trim().startsWith("#"))) {
+      const rawTag = input.hashtag || input;
+      const cleanTag = String(rawTag).replace(/^#+/, "").trim().toLowerCase();
+      if (!cleanTag) return;
+      payload = { type: "hashtag", hashtag: cleanTag };
+      optimisticItem = {
+        id: `temp-tag-${cleanTag}`,
+        type: "hashtag",
+        hashtag: cleanTag,
+        query: `#${cleanTag}`,
+        searchedAt: nowIso,
+        targetUser: null
+      };
+    } else if (input.type === "place") {
+      const cleanLoc = String(input.location || input.name || "").trim();
+      if (!cleanLoc) return;
+      payload = { type: "place", location: cleanLoc };
+      optimisticItem = {
+        id: `temp-place-${cleanLoc.toLowerCase()}`,
+        type: "place",
+        location: cleanLoc,
+        query: cleanLoc,
+        searchedAt: nowIso,
+        targetUser: null
+      };
+    } else if (input.type === "query") {
+      const cleanQ = String(input.query || "").trim();
+      if (!cleanQ) return;
+      payload = { type: "query", query: cleanQ };
+      optimisticItem = {
+        id: `temp-query-${cleanQ.toLowerCase()}`,
+        type: "query",
+        query: cleanQ,
+        searchedAt: nowIso,
+        targetUser: null
+      };
+    } else {
+      const userObj = input.targetUser || input;
+      const targetUserId = userObj?.id || userObj?._id || input.targetUserId;
+      if (!targetUserId) return;
+      payload = { type: "user", targetUserId };
+      optimisticItem = {
+        id: `temp-user-${targetUserId}`,
+        type: "user",
+        query: userObj?.username || "",
+        searchedAt: nowIso,
+        targetUser: {
+          id: targetUserId,
+          username: userObj?.username || "",
+          fullName: userObj?.fullName || "",
+          avatar: userObj?.avatar || "",
+          isPrivate: Boolean(userObj?.isPrivate)
+        }
+      };
+    }
+
+    const matchesSame = (entry) => {
+      if (!entry || entry.type !== optimisticItem.type) return false;
+      if (entry.type === "user") {
+        return (
+          (entry.targetUser?.id || entry.targetUser?._id) ===
+          (optimisticItem.targetUser?.id || optimisticItem.targetUser?._id)
+        );
+      }
+      if (entry.type === "hashtag") return entry.hashtag === optimisticItem.hashtag;
+      if (entry.type === "place") return (entry.location || "").toLowerCase() === (optimisticItem.location || "").toLowerCase();
+      return (entry.query || "").toLowerCase() === (optimisticItem.query || "").toLowerCase();
+    };
+
+    setRecentSearches((prev) => [optimisticItem, ...prev.filter((item) => !matchesSame(item))].slice(0, 20));
+
+    try {
+      const res = await searchService.addRecentSearch(payload);
+      if (res?.item) {
+        setRecentSearches((prev) => [res.item, ...prev.filter((item) => !matchesSame(item))].slice(0, 20));
+      }
+    } catch (err) {
+      console.error("[Search] Error saving recent search:", err.message);
+    }
+  }, []);
+
+  const removeRecentSearch = useCallback(async (idOrUsername) => {
+    let targetId = idOrUsername;
     setRecentSearches((prev) => {
-      const filtered = prev.filter((u) => u.username !== user.username);
-      return [user, ...filtered].slice(0, 8);
+      const matched = prev.find(
+        (item) =>
+          item.id === idOrUsername ||
+          item._id === idOrUsername ||
+          item.targetUser?.username === idOrUsername ||
+          item.username === idOrUsername
+      );
+      if (matched) targetId = matched.id || matched._id;
+      return prev.filter(
+        (item) =>
+          item.id !== idOrUsername &&
+          item._id !== idOrUsername &&
+          item.targetUser?.username !== idOrUsername &&
+          item.username !== idOrUsername
+      );
     });
-  };
 
-  const removeRecentSearch = (username) => {
-    setRecentSearches((prev) => prev.filter((u) => u.username !== username));
-  };
+    if (targetId && !String(targetId).startsWith("temp-")) {
+      try {
+        await searchService.deleteRecentSearch(targetId);
+      } catch (err) {
+        console.error("[Search] Error deleting recent search:", err.message);
+      }
+    }
+  }, []);
 
-  const clearAllRecentSearches = () => {
+  const clearAllRecentSearches = useCallback(async () => {
     setRecentSearches([]);
-  };
+    try {
+      await searchService.clearRecentSearches();
+    } catch (err) {
+      console.error("[Search] Error clearing recent searches:", err.message);
+    }
+  }, []);
 
   // Theme state: dark / light
   const [theme, setTheme] = useState(() => {
@@ -51,21 +183,36 @@ export function AppProvider({ children }) {
 
   // Real Backend Auth States
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authenticationLoading, setAuthenticationLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const isAuthenticatedRef = useRef(false);
+
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   // Social States
   const [posts, setPosts] = useState([]);
   const [feedLoading, setFeedLoading] = useState(false);
+  const [loadingMoreFeed, setLoadingMoreFeed] = useState(false);
+  const [feedHasMore, setFeedHasMore] = useState(false);
+  const [feedPage, setFeedPage] = useState(1);
   const [savedPostIds, setSavedPostIds] = useState(() => new Set());
-  const [stories, setStories] = useState(INITIAL_STORIES);
+  const [stories, setStories] = useState([]);
+  const [storiesLoading, setStoriesLoading] = useState(false);
+  const [storiesError, setStoriesError] = useState("");
   const [activeStoryIndex, setActiveStoryIndex] = useState(null);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [followRequests, setFollowRequests] = useState([]);
 
-  // Conversations & Real Backend Notifications
-  const [conversations, setConversations] = useState(INITIAL_CONVERSATIONS);
-  const [activeConvId, setActiveConvId] = useState("conv_1");
+  // Conversations, Messages & Real Backend Notifications
+  const [conversations, setConversations] = useState([]);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationsError, setConversationsError] = useState("");
+  const [activeConvId, setActiveConvId] = useState(null);
+  const [messagesByConv, setMessagesByConv] = useState({});
+  const [socketConnected, setSocketConnected] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -73,6 +220,16 @@ export function AppProvider({ children }) {
   const [notificationsPage, setNotificationsPage] = useState(1);
   const [notificationsError, setNotificationsError] = useState("");
   const socketRef = useRef(null);
+  const activeConvIdRef = useRef(null);
+  const currentUserRef = useRef(null);
+
+  useEffect(() => {
+    activeConvIdRef.current = activeConvId;
+  }, [activeConvId]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   // Modals State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -92,13 +249,36 @@ export function AppProvider({ children }) {
     }, 3000);
   }, []);
 
+  // Load active stories from MongoDB for Stories Bar
+  const fetchStoriesFeed = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setStoriesLoading(true);
+    }
+    setStoriesError("");
+    try {
+      const res = await storyService.getStoriesFeed();
+      if (res && Array.isArray(res.storyGroups)) {
+        setStories(res.storyGroups);
+      }
+    } catch (err) {
+      console.error("[Stories] Error fetching stories feed:", err.message);
+      setStoriesError(err.message || "Failed to load stories");
+    } finally {
+      if (!silent) {
+        setStoriesLoading(false);
+      }
+    }
+  }, []);
+
   // Load feed posts from MongoDB
   const fetchFeed = useCallback(async () => {
     setFeedLoading(true);
     try {
-      const res = await postService.getFeedPosts(1, 30);
+      const res = await postService.getFeedPosts(1, 15);
       if (res && Array.isArray(res.posts)) {
         setPosts(res.posts);
+        setFeedHasMore(Boolean(res.hasMore));
+        setFeedPage(1);
       }
     } catch (err) {
       console.error("[Feed] Error fetching posts:", err.message);
@@ -107,10 +287,33 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  // Load next page of feed posts
+  const loadMoreFeed = useCallback(async () => {
+    if (loadingMoreFeed || !feedHasMore) return;
+    setLoadingMoreFeed(true);
+    const nextPage = feedPage + 1;
+    try {
+      const res = await postService.getFeedPosts(nextPage, 15);
+      if (res && Array.isArray(res.posts)) {
+        setPosts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const uniqueNext = res.posts.filter((p) => !existingIds.has(p.id));
+          return [...prev, ...uniqueNext];
+        });
+        setFeedHasMore(Boolean(res.hasMore));
+        setFeedPage(nextPage);
+      }
+    } catch (err) {
+      console.error("[Feed] Error loading more posts:", err.message);
+    } finally {
+      setLoadingMoreFeed(false);
+    }
+  }, [loadingMoreFeed, feedHasMore, feedPage]);
+
   // Load suggested users from MongoDB
   const fetchSuggestions = useCallback(async () => {
     try {
-      const res = await userService.getSuggestedUsers(10);
+      const res = await searchService.getSuggestions(10);
       if (res && Array.isArray(res.users)) {
         setSuggestedUsers(res.users);
       }
@@ -169,23 +372,112 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Fetch current authenticated user session on mount
-  const fetchCurrentUser = useCallback(async () => {
-    setAuthenticationLoading(true);
+  // Load real direct message conversations from MongoDB
+  const fetchConversations = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setConversationsLoading(true);
+    }
+    setConversationsError("");
     try {
-      const res = await authService.getMe();
+      const res = await messageService.getConversations();
+      if (res && Array.isArray(res.conversations)) {
+        setConversations(res.conversations);
+      }
+    } catch (err) {
+      console.error("[Messages] Error fetching conversations:", err.message);
+      if (!silent) {
+        setConversationsError(err.message || "Failed to load conversations");
+      }
+    } finally {
+      if (!silent) {
+        setConversationsLoading(false);
+      }
+    }
+  }, []);
+
+  // Load paginated messages for a specific conversation (newest initially, cursor for older)
+  const loadConversationMessages = useCallback(async (convId, { before = null, limit = 25 } = {}) => {
+    if (!convId) return null;
+    try {
+      const res = await messageService.getMessages(convId, { limit, before });
+      const fetched = Array.isArray(res?.messages) ? res.messages : [];
+      setMessagesByConv((prev) => {
+        const existing = prev[convId] || { messages: [], hasMore: false, nextCursor: null };
+        let merged;
+        if (before) {
+          // Prepend older messages, deduplicating by ID
+          const existingIds = new Set(existing.messages.map((m) => m.id));
+          const uniqueOlder = fetched.filter((m) => !existingIds.has(m.id));
+          merged = [...uniqueOlder, ...existing.messages];
+        } else if (existing.messages.length > 0 && existing.loaded) {
+          // Silent refresh / reconnect: merge any new messages without wiping loaded history
+          const existingIds = new Set(existing.messages.map((m) => m.id));
+          const uniqueNew = fetched.filter((m) => !existingIds.has(m.id));
+          merged = [...existing.messages, ...uniqueNew];
+        } else {
+          merged = fetched;
+        }
+        return {
+          ...prev,
+          [convId]: {
+            messages: merged,
+            hasMore: before ? Boolean(res.hasMore) : existing.loaded ? existing.hasMore : Boolean(res.hasMore),
+            nextCursor: before ? res.nextCursor || null : existing.loaded ? existing.nextCursor : res.nextCursor || null,
+            loaded: true
+          }
+        };
+      });
+      return res;
+    } catch (err) {
+      console.error("[Messages] Error loading messages:", err.message);
+      throw err;
+    }
+  }, []);
+
+  // Fetch current authenticated user session on mount (deduplicated across StrictMode)
+  const fetchCurrentUser = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setAuthLoading(true);
+    }
+
+    try {
+      if (!inFlightMePromise) {
+        inFlightMePromise = authService.getMe().finally(() => {
+          inFlightMePromise = null;
+        });
+      }
+
+      const res = await inFlightMePromise;
       if (res && res.user) {
         setCurrentUser(res.user);
         setIsAuthenticated(true);
+        setAuthError(null);
+      } else {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        setAuthError(null);
+      }
+    } catch (err) {
+      const isGenuineAuthFailure = Boolean(err?.isAuthError || err?.status === 401);
+      const isNetworkOrServerIssue = Boolean(err?.isNetworkError || err?.status >= 500 || !err?.status);
+
+      if (isGenuineAuthFailure) {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        setAuthError(null);
+      } else if (isNetworkOrServerIssue) {
+        setAuthError(err?.message || "Unable to reach the authentication server.");
+        // Only leave unauthenticated on cold boot; do not force-logout an already active session on transient blips
+        if (!isAuthenticatedRef.current) {
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+        }
       } else {
         setCurrentUser(null);
         setIsAuthenticated(false);
       }
-    } catch {
-      setCurrentUser(null);
-      setIsAuthenticated(false);
     } finally {
-      setAuthenticationLoading(false);
+      setAuthLoading(false);
     }
   }, []);
 
@@ -193,14 +485,44 @@ export function AppProvider({ children }) {
     fetchCurrentUser();
   }, [fetchCurrentUser]);
 
+  // Synchronize mid-session 401 expiry from protected API calls
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      if (isAuthenticatedRef.current) {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        showToast("Your session has expired. Please log in again.");
+      }
+    };
+
+    window.addEventListener("insta:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("insta:unauthorized", handleUnauthorized);
+  }, [showToast]);
+
   // Fetch social data & connect real-time Socket.IO when authenticated
   useEffect(() => {
     if (!isAuthenticated) {
       setPosts([]);
+      setStories([]);
+      setStoriesError("");
+      setActiveStoryIndex(null);
       setSuggestedUsers([]);
       setFollowRequests([]);
+      setConversations([]);
+      setActiveConvId(null);
+      setMessagesByConv({});
+      setConversationsError("");
+      setSocketConnected(false);
       setNotifications([]);
       setUnreadCount(0);
+      setRecentSearches([]);
+      setSearchQuery("");
+      setSearchCategory("all");
+      clearSearchCache();
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -209,9 +531,12 @@ export function AppProvider({ children }) {
     }
 
     fetchFeed();
+    fetchStoriesFeed();
     fetchSuggestions();
+    fetchRecentSearches();
     fetchFollowRequests();
     fetchNotifications(1, false);
+    fetchConversations();
 
     // Derive Socket.IO server origin from VITE_API_BASE_URL
     const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
@@ -221,11 +546,25 @@ export function AppProvider({ children }) {
       withCredentials: true,
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1500
     });
 
     socketRef.current = socket;
+
+    socket.on("connect", () => {
+      setSocketConnected(true);
+      const currentActiveConv = activeConvIdRef.current;
+      if (currentActiveConv) {
+        socket.emit("join_conversation", currentActiveConv);
+        loadConversationMessages(currentActiveConv).catch(() => {});
+      }
+      fetchConversations({ silent: true });
+    });
+
+    socket.on("disconnect", () => {
+      setSocketConnected(false);
+    });
 
     socket.on("new_notification", (newNotif) => {
       if (!newNotif) return;
@@ -244,25 +583,151 @@ export function AppProvider({ children }) {
       }
     });
 
+    socket.on("new_message", (payload) => {
+      if (!payload || !payload.conversationId || !payload.message) return;
+      const { conversationId, message } = payload;
+      const myId = currentUserRef.current?.id || currentUserRef.current?._id;
+      const isFromMe = myId && message.senderId === myId;
+      const isViewingMessagesPage =
+        typeof window !== "undefined" && window.location.pathname === "/messages";
+      const isActiveChat = isViewingMessagesPage && activeConvIdRef.current === conversationId;
+
+      setMessagesByConv((prev) => {
+        const existing = prev[conversationId];
+        if (!existing) return prev;
+        if (existing.messages.some((m) => m.id === message.id)) return prev;
+        return {
+          ...prev,
+          [conversationId]: {
+            ...existing,
+            messages: [...existing.messages, message]
+          }
+        };
+      });
+
+      let foundInList = false;
+      setConversations((prev) => {
+        const updated = prev.map((c) => {
+          if (c.id !== conversationId) return c;
+          foundInList = true;
+          const nextUnread =
+            isFromMe || isActiveChat ? c.unreadCount : (c.unreadCount || 0) + 1;
+          return {
+            ...c,
+            lastMessage: message,
+            lastMessageAt: message.createdAt,
+            unreadCount: nextUnread
+          };
+        });
+        updated.sort(
+          (a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0)
+        );
+        return updated;
+      });
+
+      if (!foundInList) {
+        fetchConversations({ silent: true });
+      }
+    });
+
+    socket.on("messages_read", (payload) => {
+      if (!payload || !payload.conversationId || !payload.readerId) return;
+      const { conversationId, readerId, messageIds = [] } = payload;
+      const myId = currentUserRef.current?.id || currentUserRef.current?._id;
+      const idSet = new Set(messageIds);
+
+      setMessagesByConv((prev) => {
+        const existing = prev[conversationId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [conversationId]: {
+            ...existing,
+            messages: existing.messages.map((m) => {
+              if (!idSet.has(m.id) && idSet.size > 0) return m;
+              const currentReadBy = m.readBy || [];
+              if (currentReadBy.includes(readerId)) return m;
+              return { ...m, readBy: [...currentReadBy, readerId] };
+            })
+          }
+        };
+      });
+
+      if (myId && readerId === myId) {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === conversationId ? { ...c, unreadCount: 0 } : c))
+        );
+      }
+    });
+
+    socket.on("message_deleted", (payload) => {
+      if (!payload || !payload.conversationId || !payload.messageId) return;
+      const { conversationId, messageId, nextLastMessage } = payload;
+
+      setMessagesByConv((prev) => {
+        const existing = prev[conversationId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [conversationId]: {
+            ...existing,
+            messages: existing.messages.filter((m) => m.id !== messageId)
+          }
+        };
+      });
+
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== conversationId) return c;
+          if (c.lastMessage?.id === messageId) {
+            return {
+              ...c,
+              lastMessage: nextLastMessage || null,
+              lastMessageAt: nextLastMessage?.createdAt || c.createdAt
+            };
+          }
+          return c;
+        })
+      );
+    });
+
+    socket.on("user_presence", (payload) => {
+      if (!payload || !payload.userId) return;
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.user?.id === payload.userId
+            ? { ...c, user: { ...c.user, isOnline: Boolean(payload.isOnline) } }
+            : c
+        )
+      );
+    });
+
     // Polling fallback when Socket.IO is disconnected (e.g. serverless environments)
+    const pollMs = Math.max(5000, Number(import.meta.env.VITE_DM_POLL_INTERVAL_MS) || 15000);
     const fallbackPollInterval = setInterval(() => {
       if (!socketRef.current?.connected) {
         fetchUnreadCount();
+        fetchConversations({ silent: true });
       }
-    }, 30000);
+    }, pollMs);
 
     return () => {
       clearInterval(fallbackPollInterval);
       socket.disconnect();
       socketRef.current = null;
+      setSocketConnected(false);
     };
   }, [
     isAuthenticated,
     fetchFeed,
+    fetchStoriesFeed,
     fetchSuggestions,
+    fetchRecentSearches,
     fetchFollowRequests,
     fetchNotifications,
-    fetchUnreadCount
+    fetchUnreadCount,
+    fetchConversations,
+    loadConversationMessages
   ]);
 
   // Real Backend Login
@@ -272,6 +737,8 @@ export function AppProvider({ children }) {
       if (res && res.user) {
         setCurrentUser(res.user);
         setIsAuthenticated(true);
+        setAuthError(null);
+        setAuthLoading(false);
         showToast(res.message || `Welcome back, @${res.user.username}!`);
         return { success: true, user: res.user };
       }
@@ -296,6 +763,8 @@ export function AppProvider({ children }) {
       if (res && res.user) {
         setCurrentUser(res.user);
         setIsAuthenticated(true);
+        setAuthError(null);
+        setAuthLoading(false);
         showToast(res.message || `Welcome to Insta-V2, @${res.user.username}!`);
         return { success: true, user: res.user };
       }
@@ -326,6 +795,9 @@ export function AppProvider({ children }) {
       setFollowRequests([]);
       setNotifications([]);
       setUnreadCount(0);
+      setConversations([]);
+      setActiveConvId(null);
+      setMessagesByConv({});
       showToast("Logged out successfully");
     }
   };
@@ -558,55 +1030,119 @@ export function AppProvider({ children }) {
     showToast("Post shared to feed!");
   };
 
-  // Add New Story (called after successful backend upload)
-  const addNewStory = (storyPayload) => {
-    const newSlide = {
-      id: storyPayload.id || storyPayload._id || "slide_" + Date.now(),
-      mediaUrl: storyPayload.mediaUrl,
-      mediaType: storyPayload.mediaType || "image",
-      timestamp: "Just now",
-      caption: (storyPayload.caption || "").trim() || undefined
-    };
+  // Add New Story (called after successful backend upload & MongoDB persistence)
+  const addNewStory = useCallback(
+    (storyPayload) => {
+      if (!storyPayload) return;
+      const newSlide = {
+        id: storyPayload.id || storyPayload._id,
+        _id: storyPayload._id || storyPayload.id,
+        userId: storyPayload.userId || currentUser?.id,
+        mediaUrl: storyPayload.mediaUrl,
+        publicId: storyPayload.publicId,
+        mediaType: storyPayload.mediaType || "image",
+        caption: (storyPayload.caption || "").trim(),
+        isViewed: false,
+        isOwner: true,
+        viewersCount: 0,
+        createdAt: storyPayload.createdAt || new Date().toISOString(),
+        expiresAt: storyPayload.expiresAt
+      };
 
-    setStories((prevStories) => {
-      const existingUserStoryIndex = prevStories.findIndex(
-        (s) =>
-          currentUser &&
-          (s.userId === currentUser.id ||
-            s.userId === currentUser._id ||
-            s.username === currentUser.username)
-      );
+      setStories((prevStories) => {
+        const uid = currentUser?.id || currentUser?._id;
+        const existingIndex = prevStories.findIndex(
+          (s) =>
+            currentUser &&
+            (s.isOwn || s.userId === uid || s.username === currentUser.username)
+        );
 
-      if (existingUserStoryIndex !== -1) {
-        return prevStories.map((story, idx) => {
-          if (idx === existingUserStoryIndex) {
-            return {
-              ...story,
-              hasUnseen: true,
-              stories: [...story.stories, newSlide]
-            };
-          }
-          return story;
-        });
-      } else {
+        if (existingIndex !== -1) {
+          const existingGroup = prevStories[existingIndex];
+          const updatedGroup = {
+            ...existingGroup,
+            isOwn: true,
+            hasUnseen: true,
+            latestCreatedAt: newSlide.createdAt,
+            stories: [...existingGroup.stories, newSlide]
+          };
+          const remaining = prevStories.filter((_, idx) => idx !== existingIndex);
+          return [updatedGroup, ...remaining];
+        }
+
         const newStoryEntry = {
-          id: "story_user_me",
-          userId: currentUser?.id || currentUser?._id || "user_me",
+          id: `story_group_${uid || "me"}`,
+          userId: uid,
           username: currentUser?.username || "me",
+          fullName: currentUser?.fullName || currentUser?.username,
           userAvatar: currentUser?.avatar,
+          isOwn: true,
           hasUnseen: true,
+          latestCreatedAt: newSlide.createdAt,
           stories: [newSlide]
         };
         return [newStoryEntry, ...prevStories];
+      });
+
+      showToast("Added to your story!");
+    },
+    [currentUser, showToast]
+  );
+
+  // Mark an opened story slide as viewed and update ring state in place
+  const markStoryViewed = useCallback((storyId) => {
+    if (!storyId) return;
+    setStories((prevStories) =>
+      prevStories.map((group) => {
+        if (!group.stories.some((slide) => slide.id === storyId)) {
+          return group;
+        }
+        const updatedSlides = group.stories.map((slide) =>
+          slide.id === storyId ? { ...slide, isViewed: true } : slide
+        );
+        const hasUnseen = updatedSlides.some((slide) => !slide.isViewed);
+        return {
+          ...group,
+          stories: updatedSlides,
+          hasUnseen
+        };
+      })
+    );
+  }, []);
+
+  // Delete an owned story via backend API and update Stories Bar without reload
+  const deleteStoryById = useCallback(
+    async (storyId) => {
+      if (!storyId) return false;
+      try {
+        await storyService.deleteStory(storyId);
+        setStories((prevStories) =>
+          prevStories
+            .map((group) => {
+              const filtered = group.stories.filter((s) => s.id !== storyId);
+              if (filtered.length === group.stories.length) return group;
+              return {
+                ...group,
+                stories: filtered,
+                hasUnseen: filtered.some((s) => !s.isViewed)
+              };
+            })
+            .filter((group) => group.stories.length > 0)
+        );
+        showToast("Story deleted");
+        return true;
+      } catch (err) {
+        showToast(err.message || "Failed to delete story");
+        return false;
       }
-    });
+    },
+    [showToast]
+  );
 
-    showToast("Added to your story!");
-  };
-
-  // Update follow status across suggestedUsers & currentUser stats
+  // Update follow status across suggestedUsers, search cache & currentUser stats
   const updateFollowState = useCallback(
     (targetUserId, { isFollowing, isPending, requestId }) => {
+      clearSearchCache();
       setSuggestedUsers((prev) =>
         prev.map((u) =>
           u.id === targetUserId || u._id === targetUserId
@@ -614,7 +1150,22 @@ export function AppProvider({ children }) {
             : u
         )
       );
-      // Re-fetch currentUser stats and feed to stay accurately synced with backend
+      setRecentSearches((prev) =>
+        prev.map((item) =>
+          item.targetUser && (item.targetUser.id === targetUserId || item.targetUser._id === targetUserId)
+            ? {
+                ...item,
+                targetUser: {
+                  ...item.targetUser,
+                  isFollowing,
+                  isPending,
+                  requestId: requestId || null
+                }
+              }
+            : item
+        )
+      );
+      // Re-fetch currentUser stats, feed, and stories to stay accurately synced with backend
       authService
         .getMe()
         .then((res) => {
@@ -622,8 +1173,9 @@ export function AppProvider({ children }) {
         })
         .catch(() => {});
       fetchFeed();
+      fetchStoriesFeed({ silent: true });
     },
-    [fetchFeed]
+    [fetchFeed, fetchStoriesFeed]
   );
 
   // Follow / Unfollow / Cancel Request helper
@@ -721,54 +1273,144 @@ export function AppProvider({ children }) {
         showToast("Profile updated successfully");
         return { success: true, user: res.user };
       }
+      return { success: false, error: res?.message || "Failed to update profile" };
     } catch (err) {
       showToast(err.message || "Failed to update profile");
       return { success: false, error: err.message };
     }
   };
 
-  // Send message (preserved for UI stability)
-  const sendMessage = (convId, text) => {
-    if (!text.trim() || !currentUser) return;
-    const newMsg = {
-      id: "msg_" + Date.now(),
-      senderId: currentUser.id || currentUser._id,
-      text: text.trim(),
-      timestamp: "Just now"
-    };
-    setConversations((prev) =>
-      prev.map((c) => (c.id === convId ? { ...c, messages: [...c.messages, newMsg] } : c))
-    );
-  };
+  // Send real persistent text message via backend API (deduplicated against Socket.IO echo)
+  const sendMessage = useCallback(async (convId, text) => {
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed || !convId || !currentUserRef.current) return null;
 
-  const createOrOpenConversation = (targetUser) => {
-    if (!targetUser) return;
-    const existing = conversations.find(
-      (c) =>
-        c.user.username.toLowerCase() === targetUser.username.toLowerCase() ||
-        c.user.id === targetUser.id
-    );
-    if (existing) {
-      setActiveConvId(existing.id);
-      return existing.id;
+    const res = await messageService.sendMessage(convId, trimmed);
+    const savedMsg = res?.message;
+    if (!savedMsg) return null;
+
+    setMessagesByConv((prev) => {
+      const existing = prev[convId] || { messages: [], hasMore: false, nextCursor: null, loaded: true };
+      if (existing.messages.some((m) => m.id === savedMsg.id)) return prev;
+      return {
+        ...prev,
+        [convId]: {
+          ...existing,
+          messages: [...existing.messages, savedMsg],
+          loaded: true
+        }
+      };
+    });
+
+    setConversations((prev) => {
+      const updated = prev.map((c) =>
+        c.id === convId
+          ? {
+              ...c,
+              lastMessage: savedMsg,
+              lastMessageAt: savedMsg.createdAt
+            }
+          : c
+      );
+      updated.sort(
+        (a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0)
+      );
+      return updated;
+    });
+
+    return savedMsg;
+  }, []);
+
+  // Create or retrieve a 1-to-1 conversation in MongoDB
+  const createOrOpenConversation = useCallback(async (targetUser) => {
+    if (!targetUser) return null;
+    try {
+      const res = await messageService.createOrGetConversation({
+        recipientId: targetUser.id || targetUser._id,
+        username: targetUser.username
+      });
+      const conv = res?.conversation;
+      if (!conv) return null;
+
+      setConversations((prev) => {
+        const exists = prev.some((c) => c.id === conv.id);
+        if (exists) {
+          return prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c));
+        }
+        return [conv, ...prev];
+      });
+      setActiveConvId(conv.id);
+      return conv.id;
+    } catch (err) {
+      showToast(err.message || "Could not start conversation");
+      return null;
     }
-    const newId = "conv_" + Date.now();
-    const newConversation = {
-      id: newId,
-      user: {
-        id: targetUser.id || targetUser.username,
-        username: targetUser.username,
-        fullName: targetUser.fullName || targetUser.username,
-        avatar: targetUser.avatar,
-        isOnline: true
-      },
-      unreadCount: 0,
-      messages: []
-    };
-    setConversations((prev) => [newConversation, ...prev]);
-    setActiveConvId(newId);
-    return newId;
-  };
+  }, [showToast]);
+
+  // Mark received messages in a conversation as read when opened
+  const markConversationAsRead = useCallback(async (convId) => {
+    if (!convId) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === convId ? { ...c, unreadCount: 0 } : c))
+    );
+    try {
+      await messageService.markAsRead(convId);
+    } catch (err) {
+      console.error("[Messages] Failed to mark read:", err.message);
+    }
+  }, []);
+
+  // Delete an owned sent message
+  const deleteDirectMessage = useCallback(
+    async (messageId, convId) => {
+      if (!messageId) return false;
+      try {
+        const res = await messageService.deleteMessage(messageId);
+        setMessagesByConv((prev) => {
+          const existing = prev[convId];
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [convId]: {
+              ...existing,
+              messages: existing.messages.filter((m) => m.id !== messageId)
+            }
+          };
+        });
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c;
+            if (c.lastMessage?.id === messageId) {
+              return {
+                ...c,
+                lastMessage: res?.nextLastMessage || null,
+                lastMessageAt: res?.nextLastMessage?.createdAt || c.createdAt
+              };
+            }
+            return c;
+          })
+        );
+        showToast("Message deleted");
+        return true;
+      } catch (err) {
+        showToast(err.message || "Failed to delete message");
+        return false;
+      }
+    },
+    [showToast]
+  );
+
+  const joinConversationRoom = useCallback((convId) => {
+    if (convId && socketRef.current?.connected) {
+      socketRef.current.emit("join_conversation", convId);
+    }
+  }, []);
+
+  const leaveConversationRoom = useCallback((convId) => {
+    if (convId && socketRef.current?.connected) {
+      socketRef.current.emit("leave_conversation", convId);
+    }
+  }, []);
 
   const markNotificationsAsRead = async () => {
     if (unreadCount === 0 && notifications.every((n) => n.isRead)) return;
@@ -862,17 +1504,27 @@ export function AppProvider({ children }) {
         updateProfile,
         updatePrivacy,
         isAuthenticated,
-        authenticationLoading,
+        authLoading,
+        authenticationLoading: authLoading,
+        authError,
         fetchCurrentUser,
         login,
         signup,
         logout,
         posts,
         feedLoading,
+        loadingMoreFeed,
+        feedHasMore,
         fetchFeed,
+        loadMoreFeed,
         savedPostIds,
         stories,
+        storiesLoading,
+        storiesError,
         setStories,
+        fetchStoriesFeed,
+        markStoryViewed,
+        deleteStoryById,
         activeStoryIndex,
         setActiveStoryIndex,
         suggestedUsers,
@@ -883,10 +1535,20 @@ export function AppProvider({ children }) {
         rejectFollowRequest,
         updateFollowState,
         conversations,
+        conversationsLoading,
+        conversationsError,
+        socketConnected,
         activeConvId,
         setActiveConvId,
+        messagesByConv,
+        fetchConversations,
+        loadConversationMessages,
         sendMessage,
         createOrOpenConversation,
+        markConversationAsRead,
+        deleteDirectMessage,
+        joinConversationRoom,
+        leaveConversationRoom,
         notifications,
         unreadCount,
         notificationsLoading,
@@ -916,10 +1578,16 @@ export function AppProvider({ children }) {
         setIsEditProfileOpen,
         isSearchOpen,
         setIsSearchOpen,
+        searchQuery,
+        setSearchQuery,
+        searchCategory,
+        setSearchCategory,
         isSidebarCollapsed,
         setIsSidebarCollapsed,
         toggleSidebarCollapse,
         recentSearches,
+        recentSearchesLoading,
+        fetchRecentSearches,
         addRecentSearch,
         removeRecentSearch,
         clearAllRecentSearches,

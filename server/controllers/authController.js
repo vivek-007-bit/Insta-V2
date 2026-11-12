@@ -106,7 +106,7 @@ export const signup = async (req, res, next) => {
     });
 
     // Generate JWT and set HTTP-only cookie
-    generateToken(res, user._id);
+    generateToken(res, user._id, req);
 
     const userProfile = await formatUserWithStats(user);
 
@@ -157,7 +157,7 @@ export const login = async (req, res, next) => {
     }
 
     // Generate JWT and set cookie
-    generateToken(res, user._id);
+    generateToken(res, user._id, req);
 
     const userProfile = await formatUserWithStats(user);
 
@@ -176,7 +176,7 @@ export const login = async (req, res, next) => {
 // @access  Public
 export const logout = async (req, res, next) => {
   try {
-    clearTokenCookie(res);
+    clearTokenCookie(res, req);
     return res.status(200).json({
       success: true,
       message: 'Logged out successfully'
@@ -196,6 +196,40 @@ export const getMe = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       user: userProfile
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Check if a username is valid and available for signup
+// @route   GET /api/auth/check-username?username=...
+// @access  Public
+export const checkUsernameAvailability = async (req, res, next) => {
+  try {
+    const raw = String(req.query.username || '').trim().toLowerCase();
+
+    if (raw.length < 3) {
+      return res.status(200).json({
+        success: true,
+        available: false,
+        message: 'Username must be at least 3 characters.'
+      });
+    }
+
+    if (!/^[a-z0-9_.]+$/.test(raw)) {
+      return res.status(200).json({
+        success: true,
+        available: false,
+        message: 'Only letters, numbers, periods, and underscores allowed.'
+      });
+    }
+
+    const exists = await User.exists({ username: raw });
+    return res.status(200).json({
+      success: true,
+      available: !exists,
+      message: exists ? 'This username is already taken.' : 'Username is available.'
     });
   } catch (error) {
     next(error);

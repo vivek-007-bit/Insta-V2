@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Camera } from "lucide-react";
 import StoriesBar from "../components/stories/StoriesBar";
 import PostCard from "../components/posts/PostCard";
@@ -6,7 +6,34 @@ import RightPanel from "../components/navigation/RightPanel";
 import { useApp } from "../context/AppContext";
 
 export default function Home() {
-  const { posts, feedLoading, setIsCreateModalOpen } = useApp();
+  const {
+    posts,
+    feedLoading,
+    loadingMoreFeed,
+    feedHasMore,
+    loadMoreFeed,
+    setIsCreateModalOpen
+  } = useApp();
+
+  const sentinelRef = useRef(null);
+
+  // Automatic incremental loading when scrolling near bottom of feed
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !feedHasMore || loadingMoreFeed) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          loadMoreFeed();
+        }
+      },
+      { rootMargin: "300px" }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [feedHasMore, loadingMoreFeed, loadMoreFeed]);
 
   return (
     <div className="main-container">
@@ -55,7 +82,35 @@ export default function Home() {
               </button>
             </div>
           ) : (
-            posts.map((post) => <PostCard key={post.id} post={post} />)
+            <>
+              {posts.map((post) => (
+                <PostCard key={post.id} post={post} />
+              ))}
+
+              {/* Infinite scroll sentinel & manual fallback button */}
+              {feedHasMore && (
+                <div
+                  ref={sentinelRef}
+                  style={{ padding: "20px 0", textAlign: "center" }}
+                >
+                  <button
+                    type="button"
+                    onClick={loadMoreFeed}
+                    disabled={loadingMoreFeed}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--accent-gray-btn)",
+                      fontSize: "var(--font-size-xs)",
+                      fontWeight: "600",
+                      color: "var(--text-primary)"
+                    }}
+                  >
+                    {loadingMoreFeed ? "Loading more posts..." : "Load more posts"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

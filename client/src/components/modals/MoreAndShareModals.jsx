@@ -66,16 +66,16 @@ export function MoreOptionsModal() {
   return (
     <div className="modal-overlay" onClick={handleClose} role="dialog" aria-modal="true">
       <div className="modal-container options-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="options-btn" onClick={handleBookmark}>
+        <button type="button" className="options-btn" onClick={handleBookmark}>
           {moreOptionsPost.isSaved ? "Remove from Saved" : "Save to Collection"}
         </button>
-        <button className="options-btn" onClick={handleNativeShare}>
+        <button type="button" className="options-btn" onClick={handleNativeShare}>
           Share to...
         </button>
-        <button className="options-btn" onClick={handleCopyLink}>
+        <button type="button" className="options-btn" onClick={handleCopyLink}>
           Copy link
         </button>
-        <button className="options-btn" onClick={handleClose}>
+        <button type="button" className="options-btn" onClick={handleClose}>
           Cancel
         </button>
       </div>
@@ -145,9 +145,11 @@ export function ShareDialogModal() {
           <div style={{ width: 20 }} />
           <h2 className="create-post-title">Share Post</h2>
           <button
+            type="button"
             className="modal-close-x"
             style={{ position: "static", color: "var(--text-primary)" }}
             onClick={handleClose}
+            aria-label="Close share dialog"
           >
             <X size={20} />
           </button>

@@ -1,7 +1,13 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { X, Image as ImageIcon, Film, RefreshCw, Trash2, ArrowLeft } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import mediaService from "../../services/mediaService";
+import storyService, {
+  STORY_MAX_IMAGE_BYTES,
+  STORY_MAX_VIDEO_BYTES,
+  ALLOWED_STORY_IMAGE_TYPES,
+  ALLOWED_STORY_VIDEO_TYPES
+} from "../../services/storyService";
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
 
 export default function CreateStoryModal() {
   const { isCreateStoryOpen, setIsCreateStoryOpen, addNewStory, currentUser } = useApp();
@@ -24,20 +30,7 @@ export default function CreateStoryModal() {
     };
   }, [previewUrl]);
 
-  // Handle ESC key to close modal
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape" && isCreateStoryOpen && !isUploading) {
-        handleClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isCreateStoryOpen, previewUrl, isUploading]);
-
-  if (!isCreateStoryOpen) return null;
-
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (isUploading) return;
     if (previewUrl && previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(previewUrl);
@@ -49,18 +42,51 @@ export default function CreateStoryModal() {
     setIsUploading(false);
     setUploadProgress(0);
     setIsCreateStoryOpen(false);
-  };
+  }, [isUploading, previewUrl, setIsCreateStoryOpen]);
+
+  // Lock background scroll while modal is open
+  useEffect(() => {
+    if (!isCreateStoryOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isCreateStoryOpen]);
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && isCreateStoryOpen && !isUploading) {
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCreateStoryOpen, isUploading, handleClose]);
+
+  if (!isCreateStoryOpen) return null;
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    const isImage = file.type.startsWith("image/");
-    const isVideo = file.type.startsWith("video/");
+    const mime = (file.type || "").toLowerCase();
+    const isImage = ALLOWED_STORY_IMAGE_TYPES.includes(mime) || mime.startsWith("image/");
+    const isVideo = ALLOWED_STORY_VIDEO_TYPES.includes(mime) || mime.startsWith("video/");
 
     if (!isImage && !isVideo) {
-      setErrorMessage("Please select a supported image or video file.");
+      setErrorMessage("Unsupported file type. Please select JPG, PNG, WEBP, GIF, MP4, WEBM, or MOV.");
+      return;
+    }
+
+    const maxBytes = isVideo ? STORY_MAX_VIDEO_BYTES : STORY_MAX_IMAGE_BYTES;
+    if (file.size > maxBytes) {
+      setErrorMessage(
+        isVideo
+          ? "Story video size must be 50 MB or less."
+          : "Story image size must be 15 MB or less."
+      );
       return;
     }
 
@@ -100,25 +126,27 @@ export default function CreateStoryModal() {
     setUploadProgress(0);
 
     try {
-      // 1. Get signed upload signature from backend
-      const signatureData = await mediaService.getUploadSignature({
-        folder: "insta_v2/stories",
-        resourceType: mediaType === "video" ? "video" : "image"
+      // 1. Get signed upload signature from Stories API
+      const signatureData = await storyService.getUploadSignature({
+        resourceType: mediaType === "video" ? "video" : "image",
+        fileSize: selectedFile.size,
+        mimeType: selectedFile.type
       });
 
       // 2. Upload directly to Cloudinary
-      const uploadResult = await mediaService.uploadToCloudinary(
+      const uploadResult = await storyService.uploadToCloudinary(
         selectedFile,
         signatureData,
         (progress) => setUploadProgress(progress)
       );
 
       // 3. Save story metadata to MongoDB
-      const storyResponse = await mediaService.createStory({
+      const storyResponse = await storyService.createStory({
         mediaUrl: uploadResult.mediaUrl,
         publicId: uploadResult.publicId,
         mediaType: uploadResult.mediaType,
-        caption
+        caption,
+        fileSize: selectedFile.size
       });
 
       // 4. Update frontend context with new story
@@ -143,6 +171,7 @@ export default function CreateStoryModal() {
       aria-labelledby="create-story-heading"
     >
       <button
+        type="button"
         className="modal-close-x"
         onClick={handleClose}
         aria-label="Close story composer"
@@ -159,6 +188,7 @@ export default function CreateStoryModal() {
         <div className="create-story-header">
           {previewUrl && !isUploading ? (
             <button
+              type="button"
               className="post-action-btn"
               onClick={handleRemoveMedia}
               aria-label="Back to media selection"
@@ -235,11 +265,15 @@ export default function CreateStoryModal() {
               <div className="create-story-author-pill">
                 <img
                   src={
-                    currentUser?.avatar ||
-                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+                    optimizeMediaUrl(currentUser?.avatar, { width: 150, isAvatar: true }) ||
+                    getAvatarFallbackUrl(currentUser?.username)
                   }
                   alt={currentUser?.username || "user"}
                   className="create-story-author-avatar"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = getAvatarFallbackUrl(currentUser?.username);
+                  }}
                 />
                 <span className="create-story-author-name">
                   {currentUser?.username || "user"}

@@ -81,6 +81,8 @@ userSchema.methods.toJSON = function () {
   return userObj;
 };
 
+userSchema.index({ fullName: 1 });
+
 const User = mongoose.model('User', userSchema);
 
 export default User;

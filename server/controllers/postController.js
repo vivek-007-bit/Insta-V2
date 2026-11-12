@@ -38,33 +38,44 @@ const enrichPostsForViewer = async (posts, viewerId) => {
     }
   }
 
-  return posts.map((p) => {
-    const pid = p._id.toString();
-    return {
-      id: pid,
-      _id: pid,
-      author: {
-        id: p.user._id.toString(),
-        username: p.user.username,
-        fullName: p.user.fullName,
-        avatar: p.user.avatar,
-        isPrivate: Boolean(p.user.isPrivate),
-        isVerified: false
-      },
-      location: p.location || '',
-      mediaUrl: p.mediaUrl,
-      publicId: p.publicId,
-      mediaType: p.mediaType,
-      mediaAspect: p.mediaAspect,
-      caption: p.caption,
-      likesCount: p.likesCount || 0,
-      commentsCount: p.commentsCount || 0,
-      isLiked: likedPostIds.has(pid),
-      isSaved: false,
-      comments: (commentsByPost.get(pid) || []).reverse(),
-      createdAt: p.createdAt
-    };
-  });
+  return posts
+    .filter((p) => p && p.user)
+    .map((p) => {
+      const pid = p._id.toString();
+      const secureMediaUrl =
+        p.mediaUrl && p.mediaUrl.startsWith('http://res.cloudinary.com')
+          ? p.mediaUrl.replace('http://', 'https://')
+          : p.mediaUrl;
+      const secureAvatar =
+        p.user.avatar && p.user.avatar.startsWith('http://res.cloudinary.com')
+          ? p.user.avatar.replace('http://', 'https://')
+          : p.user.avatar;
+
+      return {
+        id: pid,
+        _id: pid,
+        author: {
+          id: p.user._id.toString(),
+          username: p.user.username,
+          fullName: p.user.fullName,
+          avatar: secureAvatar,
+          isPrivate: Boolean(p.user.isPrivate),
+          isVerified: false
+        },
+        location: p.location || '',
+        mediaUrl: secureMediaUrl,
+        publicId: p.publicId,
+        mediaType: p.mediaType,
+        mediaAspect: p.mediaAspect,
+        caption: p.caption,
+        likesCount: p.likesCount || 0,
+        commentsCount: p.commentsCount || 0,
+        isLiked: likedPostIds.has(pid),
+        isSaved: false,
+        comments: (commentsByPost.get(pid) || []).reverse(),
+        createdAt: p.createdAt
+      };
+    });
 };
 
 // @desc    Get authorized feed posts (own posts + following + public accounts)

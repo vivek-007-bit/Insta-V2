@@ -3,10 +3,10 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 
 export default function ProtectedRoute({ children }) {
-  const { isAuthenticated, authenticationLoading } = useApp();
+  const { isAuthenticated, authLoading } = useApp();
   const location = useLocation();
 
-  if (authenticationLoading) {
+  if (authLoading) {
     return (
       <div
         style={{

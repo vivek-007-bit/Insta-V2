@@ -1,51 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  Home,
-  Search,
-  Film,
-  MessageCircle,
-  Heart,
-  PlusSquare,
-  Menu,
-  Sun,
-  Moon,
-  Bookmark,
-  Settings,
-  PanelLeftClose,
-  PanelLeftOpen
-} from "lucide-react";
+import { Sun, Moon, Bookmark, Settings } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-
-// Recognizable Instagram camera outline glyph
-function InstagramCameraGlyph({ size = 26, className = "" }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" strokeWidth="2.5" />
-    </svg>
-  );
-}
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
+import {
+  InstagramCameraGlyph,
+  IgHomeIcon,
+  IgSearchIcon,
+  IgReelsIcon,
+  IgMessagesIcon,
+  IgNotificationsIcon,
+  IgCreateIcon,
+  IgMoreIcon,
+  IgSidebarCollapseIcon
+} from "./InstagramNavIcons";
 
 export default function Sidebar() {
   const location = useLocation();
   const {
     currentUser,
     unreadCount,
-    followRequests,
     conversations,
+    isCreateModalOpen,
     setIsCreateModalOpen,
     isSearchOpen,
     setIsSearchOpen,
@@ -57,8 +33,29 @@ export default function Sidebar() {
   } = useApp();
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const bottomRef = useRef(null);
 
-  // Unread counts
+  // Close More popover on outside click or Escape
+  useEffect(() => {
+    if (!isMoreOpen) return undefined;
+    const handleClickOutside = (e) => {
+      if (bottomRef.current && !bottomRef.current.contains(e.target)) {
+        setIsMoreOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setIsMoreOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMoreOpen]);
+
+  if (!currentUser) return null;
+
   const totalUnreadNotifs = unreadCount || 0;
   const unreadNotifsLabel = totalUnreadNotifs > 99 ? "99+" : totalUnreadNotifs;
   const unreadMessagesCount = conversations.reduce(
@@ -66,10 +63,20 @@ export default function Sidebar() {
     0
   );
 
-  const isActive = (path) => location.pathname === path && !isSearchOpen;
+  const isHomeActive = location.pathname === "/" && !isSearchOpen;
+  const isSearchActive =
+    isSearchOpen || location.pathname === "/search" || location.pathname === "/explore";
+  const isReelsActive =
+    (location.pathname === "/reels" || location.pathname.startsWith("/reels/")) && !isSearchOpen;
+  const isMessagesActive = location.pathname === "/messages" && !isSearchOpen;
+  const isNotificationsActive = location.pathname === "/notifications" && !isSearchOpen;
+  const isProfileActive =
+    (location.pathname === "/profile" ||
+      location.pathname.toLowerCase() === `/profile/${currentUser.username.toLowerCase()}`) &&
+    !isSearchOpen;
 
   const handleSearchClick = () => {
-    setIsSearchOpen(prev => !prev);
+    setIsSearchOpen((prev) => !prev);
   };
 
   const isCollapsed = isSidebarCollapsed || isSearchOpen;
@@ -83,9 +90,10 @@ export default function Sidebar() {
           className="sidebar-brand"
           onClick={() => setIsSearchOpen(false)}
           title="Insta-V2 Home"
+          aria-label="Insta-V2 Home"
         >
           <div className="brand-logo-wrap">
-            <InstagramCameraGlyph size={30} className="brand-camera-icon" />
+            <InstagramCameraGlyph size={26} className="brand-camera-icon" />
           </div>
           <span className="brand-text">Insta-V2</span>
         </Link>
@@ -93,125 +101,142 @@ export default function Sidebar() {
 
       {/* 2. Primary Navigation Section */}
       <nav className="sidebar-nav" aria-label="Main Navigation">
-          {/* 1. Home */}
-          <Link
-            to="/"
-            className={`nav-item ${isActive("/") ? "active" : ""}`}
-            onClick={() => setIsSearchOpen(false)}
-            title="Home"
-          >
-            <div className="nav-icon-wrapper">
-              <Home size={24} strokeWidth={isActive("/") ? 2.5 : 1.8} />
-            </div>
-            <span className="nav-label">Home</span>
-          </Link>
+        {/* Home */}
+        <Link
+          to="/"
+          className={`nav-item ${isHomeActive ? "active" : ""}`}
+          onClick={() => setIsSearchOpen(false)}
+          title="Home"
+          aria-label="Home"
+          aria-current={isHomeActive ? "page" : undefined}
+        >
+          <div className="nav-icon-wrapper">
+            <IgHomeIcon active={isHomeActive} size={24} className="nav-ig-icon" />
+          </div>
+          <span className="nav-label">Home</span>
+        </Link>
 
-          {/* 2. Search */}
-          <button
-            type="button"
-            className={`nav-item ${isSearchOpen || location.pathname === "/search" ? "active" : ""}`}
-            onClick={handleSearchClick}
-            title="Search"
-          >
-            <div className="nav-icon-wrapper">
-              <Search
-                size={24}
-                strokeWidth={isSearchOpen || location.pathname === "/search" ? 2.5 : 1.8}
-              />
-            </div>
-            <span className="nav-label">Search</span>
-          </button>
+        {/* Search */}
+        <button
+          type="button"
+          className={`nav-item ${isSearchActive ? "active" : ""}`}
+          onClick={handleSearchClick}
+          title="Search"
+          aria-label="Search"
+          aria-pressed={isSearchOpen}
+        >
+          <div className="nav-icon-wrapper">
+            <IgSearchIcon active={isSearchActive} size={24} className="nav-ig-icon" />
+          </div>
+          <span className="nav-label">Search</span>
+        </button>
 
-          {/* 3. Reels */}
-          <Link
-            to="/reels"
-            className={`nav-item ${isActive("/reels") ? "active" : ""}`}
-            onClick={() => setIsSearchOpen(false)}
-            title="Reels"
-          >
-            <div className="nav-icon-wrapper">
-              <Film size={24} strokeWidth={isActive("/reels") ? 2.5 : 1.8} />
-            </div>
-            <span className="nav-label">Reels</span>
-          </Link>
+        {/* Reels */}
+        <Link
+          to="/reels"
+          className={`nav-item ${isReelsActive ? "active" : ""}`}
+          onClick={() => setIsSearchOpen(false)}
+          title="Reels"
+          aria-label="Reels"
+          aria-current={isReelsActive ? "page" : undefined}
+        >
+          <div className="nav-icon-wrapper">
+            <IgReelsIcon active={isReelsActive} size={24} className="nav-ig-icon" />
+          </div>
+          <span className="nav-label">Reels</span>
+        </Link>
 
-          {/* 4. Messages */}
-          <Link
-            to="/messages"
-            className={`nav-item ${isActive("/messages") ? "active" : ""}`}
-            onClick={() => setIsSearchOpen(false)}
-            title="Messages"
-          >
-            <div className="nav-icon-wrapper">
-              <MessageCircle
-                size={24}
-                strokeWidth={isActive("/messages") ? 2.5 : 1.8}
-              />
-              {unreadMessagesCount > 0 && (
-                <span className="nav-badge">{unreadMessagesCount}</span>
-              )}
-            </div>
-            <span className="nav-label">Messages</span>
-          </Link>
+        {/* Messages */}
+        <Link
+          to="/messages"
+          className={`nav-item ${isMessagesActive ? "active" : ""}`}
+          onClick={() => setIsSearchOpen(false)}
+          title="Messages"
+          aria-label="Messages"
+          aria-current={isMessagesActive ? "page" : undefined}
+        >
+          <div className="nav-icon-wrapper">
+            <IgMessagesIcon active={isMessagesActive} size={24} className="nav-ig-icon" />
+            {unreadMessagesCount > 0 && (
+              <span className="nav-badge">{unreadMessagesCount}</span>
+            )}
+          </div>
+          <span className="nav-label">Messages</span>
+        </Link>
 
-          {/* 5. Notifications */}
-          <Link
-            to="/notifications"
-            className={`nav-item ${isActive("/notifications") ? "active" : ""}`}
-            onClick={() => setIsSearchOpen(false)}
-            title="Notifications"
-          >
-            <div className="nav-icon-wrapper">
-              <Heart
-                size={24}
-                strokeWidth={isActive("/notifications") ? 2.5 : 1.8}
-              />
-              {totalUnreadNotifs > 0 && (
-                <span className="nav-badge">{unreadNotifsLabel}</span>
-              )}
-            </div>
-            <span className="nav-label">Notifications</span>
-          </Link>
+        {/* Notifications */}
+        <Link
+          to="/notifications"
+          className={`nav-item ${isNotificationsActive ? "active" : ""}`}
+          onClick={() => setIsSearchOpen(false)}
+          title="Notifications"
+          aria-label="Notifications"
+          aria-current={isNotificationsActive ? "page" : undefined}
+        >
+          <div className="nav-icon-wrapper">
+            <IgNotificationsIcon
+              active={isNotificationsActive}
+              size={24}
+              className="nav-ig-icon"
+            />
+            {totalUnreadNotifs > 0 && (
+              <span className="nav-badge">{unreadNotifsLabel}</span>
+            )}
+          </div>
+          <span className="nav-label">Notifications</span>
+        </Link>
 
-          {/* 6. Create */}
-          <button
-            type="button"
-            className="nav-item"
-            onClick={() => {
-              setIsSearchOpen(false);
-              setIsCreateModalOpen(true);
-            }}
-            title="Create Post"
-          >
-            <div className="nav-icon-wrapper">
-              <PlusSquare size={24} strokeWidth={1.8} />
-            </div>
-            <span className="nav-label">Create</span>
-          </button>
+        {/* Create */}
+        <button
+          type="button"
+          className={`nav-item ${isCreateModalOpen ? "active" : ""}`}
+          onClick={() => {
+            setIsSearchOpen(false);
+            setIsCreateModalOpen(true);
+          }}
+          title="Create"
+          aria-label="Create post"
+          aria-pressed={isCreateModalOpen}
+        >
+          <div className="nav-icon-wrapper">
+            <IgCreateIcon active={isCreateModalOpen} size={24} className="nav-ig-icon" />
+          </div>
+          <span className="nav-label">Create</span>
+        </button>
 
-          {/* 7. Profile */}
-          <Link
-            to="/profile"
-            className={`nav-item ${isActive("/profile") ? "active" : ""}`}
-            onClick={() => setIsSearchOpen(false)}
-            title="Profile"
-          >
-            <div className="nav-icon-wrapper">
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.username}
-                className={`nav-avatar-mini ${isActive("/profile") ? "active-ring" : ""}`}
-              />
-            </div>
-            <span className="nav-label">Profile</span>
-          </Link>
-        </nav>
+        {/* Profile */}
+        <Link
+          to="/profile"
+          className={`nav-item ${isProfileActive ? "active" : ""}`}
+          onClick={() => setIsSearchOpen(false)}
+          title="Profile"
+          aria-label="Profile"
+          aria-current={isProfileActive ? "page" : undefined}
+        >
+          <div className="nav-icon-wrapper">
+            <img
+              src={
+                optimizeMediaUrl(currentUser.avatar, { width: 100, isAvatar: true }) ||
+                getAvatarFallbackUrl(currentUser.username)
+              }
+              alt={currentUser.username}
+              className={`nav-avatar-mini ${isProfileActive ? "active-ring" : ""}`}
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = getAvatarFallbackUrl(currentUser.username);
+              }}
+            />
+          </div>
+          <span className="nav-label">Profile</span>
+        </Link>
+      </nav>
 
-      {/* 3. More Section (anchored at bottom) */}
-      <div className="sidebar-bottom">
+      {/* 3. Bottom Controls (Collapse + More anchored at bottom) */}
+      <div className="sidebar-bottom" ref={bottomRef}>
         {isMoreOpen && (
           <div className="more-menu-dropdown" role="menu">
             <button
+              type="button"
               className="more-menu-item"
               onClick={() => {
                 toggleSidebarCollapse();
@@ -220,10 +245,11 @@ export default function Sidebar() {
               role="menuitem"
             >
               <span>{isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}</span>
-              {isSidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+              <IgSidebarCollapseIcon collapsed={isSidebarCollapsed} size={18} />
             </button>
             <div className="more-menu-divider" />
             <button
+              type="button"
               className="more-menu-item"
               onClick={toggleTheme}
               role="menuitem"
@@ -257,6 +283,7 @@ export default function Sidebar() {
             </Link>
             <div className="more-menu-divider" />
             <button
+              type="button"
               className="more-menu-item"
               onClick={() => {
                 logout();
@@ -267,6 +294,7 @@ export default function Sidebar() {
               <span>Switch Accounts</span>
             </button>
             <button
+              type="button"
               className="more-menu-item"
               onClick={() => {
                 logout();
@@ -288,11 +316,7 @@ export default function Sidebar() {
           aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <div className="nav-icon-wrapper">
-            {isSidebarCollapsed ? (
-              <PanelLeftOpen size={24} strokeWidth={1.8} />
-            ) : (
-              <PanelLeftClose size={24} strokeWidth={1.8} />
-            )}
+            <IgSidebarCollapseIcon collapsed={isSidebarCollapsed} size={24} className="nav-ig-icon" />
           </div>
           <span className="nav-label">
             {isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -301,12 +325,15 @@ export default function Sidebar() {
 
         {/* More Options Button */}
         <button
+          type="button"
           className={`nav-item ${isMoreOpen ? "active" : ""}`}
-          onClick={() => setIsMoreOpen(!isMoreOpen)}
-          title="More options"
+          onClick={() => setIsMoreOpen((prev) => !prev)}
+          title="More"
+          aria-label="More options"
+          aria-expanded={isMoreOpen}
         >
           <div className="nav-icon-wrapper">
-            <Menu size={24} strokeWidth={1.8} />
+            <IgMoreIcon active={isMoreOpen} size={24} className="nav-ig-icon" />
           </div>
           <span className="nav-label">More</span>
         </button>

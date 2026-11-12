@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { X, UserPlus } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
 
 export default function FollowRequestsModal({ isOpen, onClose }) {
   const {
@@ -18,6 +19,15 @@ export default function FollowRequestsModal({ isOpen, onClose }) {
       fetchFollowRequests();
     }
   }, [isOpen, fetchFollowRequests]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -100,7 +110,7 @@ export default function FollowRequestsModal({ isOpen, onClose }) {
                   style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}
                 >
                   <img
-                    src={req.user.avatar}
+                    src={optimizeMediaUrl(req.user.avatar, { width: 150, isAvatar: true }) || getAvatarFallbackUrl(req.user.username)}
                     alt={req.user.username}
                     style={{
                       width: "44px",
@@ -109,6 +119,10 @@ export default function FollowRequestsModal({ isOpen, onClose }) {
                       objectFit: "cover",
                       flexShrink: 0,
                       border: "1px solid var(--border-subtle)"
+                    }}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = getAvatarFallbackUrl(req.user.username);
                     }}
                   />
                   <div style={{ minWidth: 0 }}>

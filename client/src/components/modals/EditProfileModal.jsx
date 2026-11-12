@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useRef } from "react";
-import { X, Camera } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { X, Camera, Loader2 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import mediaService from "../../services/mediaService";
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
 
 export default function EditProfileModal() {
   const { isEditProfileOpen, setIsEditProfileOpen, currentUser, updateProfile } = useApp();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
@@ -16,11 +20,27 @@ export default function EditProfileModal() {
 
   const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
+  const previewObjectUrlRef = useRef(null);
   const MAX_BIO_LENGTH = 150;
 
-  // Initialize form with current profile data when opened
+  const revokePreviewUrl = useCallback(() => {
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+      previewObjectUrlRef.current = null;
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (isSubmitting) return;
+    revokePreviewUrl();
+    setErrorMessage("");
+    setSelectedFile(null);
+    setIsEditProfileOpen(false);
+  }, [isSubmitting, revokePreviewUrl, setIsEditProfileOpen]);
+
   useEffect(() => {
     if (currentUser && isEditProfileOpen) {
+      revokePreviewUrl();
       setFullName(currentUser.fullName || "");
       setUsername(currentUser.username || "");
       setBio(currentUser.bio || "");
@@ -30,9 +50,17 @@ export default function EditProfileModal() {
       setErrorMessage("");
       setIsSubmitting(false);
     }
-  }, [currentUser, isEditProfileOpen]);
+  }, [currentUser, isEditProfileOpen, revokePreviewUrl]);
 
-  // Handle ESC key to close modal
+  useEffect(() => {
+    if (!isEditProfileOpen) return undefined;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isEditProfileOpen]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && isEditProfileOpen) {
@@ -41,15 +69,9 @@ export default function EditProfileModal() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isEditProfileOpen, setIsEditProfileOpen]);
+  }, [isEditProfileOpen, handleClose]);
 
   if (!isEditProfileOpen) return null;
-
-  const handleClose = () => {
-    setErrorMessage("");
-    setSelectedFile(null);
-    setIsEditProfileOpen(false);
-  };
 
   const handleChangePhoto = (e) => {
     const file = e.target.files?.[0];
@@ -58,8 +80,10 @@ export default function EditProfileModal() {
         setErrorMessage("Please select a valid image file.");
         return;
       }
+      revokePreviewUrl();
       setSelectedFile(file);
       const url = URL.createObjectURL(file);
+      previewObjectUrlRef.current = url;
       setAvatar(url);
       setErrorMessage("");
     }
@@ -67,17 +91,36 @@ export default function EditProfileModal() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
-    // Validation
-    const trimmedUsername = username.trim();
+    const trimmedUsername = username.trim().toLowerCase();
     if (!trimmedUsername) {
       setErrorMessage("Username cannot be empty.");
       return;
     }
 
-    if (trimmedUsername.includes(" ")) {
-      setErrorMessage("Username cannot contain spaces.");
+    if (trimmedUsername.length < 3 || !/^[a-z0-9_.]+$/.test(trimmedUsername)) {
+      setErrorMessage(
+        "Username must be at least 3 characters and contain only letters, numbers, periods, and underscores."
+      );
       return;
+    }
+
+    let normalizedWebsite = website.trim();
+    if (normalizedWebsite) {
+      if (!/^https?:\/\//i.test(normalizedWebsite)) {
+        normalizedWebsite = `https://${normalizedWebsite}`;
+      }
+      try {
+        const parsed = new URL(normalizedWebsite);
+        if (!parsed.hostname.includes(".")) {
+          setErrorMessage("Please enter a valid website URL.");
+          return;
+        }
+      } catch {
+        setErrorMessage("Please enter a valid website URL.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -87,26 +130,40 @@ export default function EditProfileModal() {
       let finalAvatarUrl = avatar;
 
       if (selectedFile) {
-        const sig = await mediaService.getUploadSignature({ folder: "insta_v2", resourceType: "image" });
+        const sig = await mediaService.getUploadSignature({
+          folder: "insta_v2",
+          resourceType: "image"
+        });
         const uploadRes = await mediaService.uploadToCloudinary(selectedFile, sig);
         finalAvatarUrl = uploadRes.mediaUrl;
       }
 
+      const previousUsername = currentUser?.username;
       const res = await updateProfile({
         fullName: fullName.trim(),
         username: trimmedUsername,
         bio: bio.trim(),
-        website: website.trim(),
+        website: normalizedWebsite,
         avatar: finalAvatarUrl
       });
 
       if (res && res.success) {
-        handleClose();
+        if (
+          previousUsername &&
+          res.user?.username &&
+          res.user.username !== previousUsername &&
+          location.pathname.toLowerCase() === `/profile/${previousUsername.toLowerCase()}`
+        ) {
+          navigate(`/profile/${encodeURIComponent(res.user.username)}`, { replace: true });
+        }
+        revokePreviewUrl();
+        setSelectedFile(null);
+        setIsEditProfileOpen(false);
       } else {
-        setErrorMessage(res?.error || "Failed to update profile");
+        setErrorMessage(res?.error || "Failed to update profile.");
       }
     } catch (err) {
-      setErrorMessage(err.message || "Failed to update profile");
+      setErrorMessage(err.message || "Failed to update profile.");
     } finally {
       setIsSubmitting(false);
     }
@@ -122,17 +179,18 @@ export default function EditProfileModal() {
     >
       <div
         className="modal-container edit-profile-modal"
-        onClick={(e) => e.stopPropagation()} // Prevent accidental close on modal click
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="edit-profile-header">
           <h2 id="edit-profile-modal-title" className="edit-profile-title">
-            Edit Profile
+            Edit profile
           </h2>
           <button
             type="button"
             className="edit-profile-close-btn"
             onClick={handleClose}
+            disabled={isSubmitting}
             aria-label="Close edit profile"
           >
             <X size={20} />
@@ -140,21 +198,34 @@ export default function EditProfileModal() {
         </div>
 
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <form onSubmit={handleSubmit} className="edit-profile-form" noValidate>
           <div className="edit-profile-body">
             {/* Profile Photo Card */}
             <div className="edit-profile-photo-card">
               <div className="edit-profile-photo-left">
                 <div className="edit-profile-avatar-wrap">
                   <img
-                    src={avatar}
+                    src={
+                      avatar?.startsWith("blob:")
+                        ? avatar
+                        : optimizeMediaUrl(avatar, { width: 200, isAvatar: true }) ||
+                          getAvatarFallbackUrl(username || currentUser?.username)
+                    }
                     alt={currentUser?.username || "Avatar"}
                     className="edit-profile-avatar-img"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = getAvatarFallbackUrl(username || currentUser?.username);
+                    }}
                   />
                 </div>
                 <div className="edit-profile-user-meta">
-                  <span className="edit-profile-username-heading">{username || currentUser?.username}</span>
-                  <span className="edit-profile-user-fullname">{fullName || currentUser?.fullName}</span>
+                  <span className="edit-profile-username-heading">
+                    {username || currentUser?.username}
+                  </span>
+                  <span className="edit-profile-user-fullname">
+                    {fullName || currentUser?.fullName}
+                  </span>
                 </div>
               </div>
 
@@ -163,9 +234,9 @@ export default function EditProfileModal() {
                   type="button"
                   className="edit-profile-change-photo-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  title="Upload new profile picture"
+                  disabled={isSubmitting}
                 >
-                  <Camera size={16} />
+                  <Camera size={15} />
                   <span>Change photo</span>
                 </button>
                 <input
@@ -178,14 +249,12 @@ export default function EditProfileModal() {
               </div>
             </div>
 
-            {/* Error Message if any */}
             {errorMessage && (
               <div className="edit-field-error" role="alert">
                 {errorMessage}
               </div>
             )}
 
-            {/* 1. Name Field */}
             <div className="edit-field-group">
               <div className="edit-field-label-row">
                 <label htmlFor="edit-profile-name" className="edit-field-label">
@@ -195,7 +264,7 @@ export default function EditProfileModal() {
               <input
                 id="edit-profile-name"
                 type="text"
-                placeholder="Your full name"
+                placeholder="Name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="edit-field-input"
@@ -206,7 +275,6 @@ export default function EditProfileModal() {
               </span>
             </div>
 
-            {/* 2. Username Field */}
             <div className="edit-field-group">
               <div className="edit-field-label-row">
                 <label htmlFor="edit-profile-username" className="edit-field-label">
@@ -224,11 +292,10 @@ export default function EditProfileModal() {
                 required
               />
               <span className="edit-field-helper">
-                In most cases, you'll be able to change your username back to {currentUser?.username}.
+                Letters, numbers, periods, and underscores only.
               </span>
             </div>
 
-            {/* 3. Website Field */}
             <div className="edit-field-group">
               <div className="edit-field-label-row">
                 <label htmlFor="edit-profile-website" className="edit-field-label">
@@ -237,7 +304,7 @@ export default function EditProfileModal() {
               </div>
               <input
                 id="edit-profile-website"
-                type="url"
+                type="text"
                 placeholder="https://example.com"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
@@ -245,7 +312,6 @@ export default function EditProfileModal() {
               />
             </div>
 
-            {/* 4. Bio Field */}
             <div className="edit-field-group">
               <div className="edit-field-label-row">
                 <label htmlFor="edit-profile-bio" className="edit-field-label">
@@ -257,12 +323,12 @@ export default function EditProfileModal() {
               </div>
               <textarea
                 id="edit-profile-bio"
-                placeholder="Tell your story or describe what you share..."
+                placeholder="Bio"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 className="edit-field-textarea"
                 maxLength={MAX_BIO_LENGTH}
-                rows={4}
+                rows={3}
               />
             </div>
           </div>
@@ -273,6 +339,7 @@ export default function EditProfileModal() {
               type="button"
               className="btn-cancel-edit"
               onClick={handleClose}
+              disabled={isSubmitting}
             >
               Cancel
             </button>
@@ -281,7 +348,14 @@ export default function EditProfileModal() {
               className="btn-save-edit"
               disabled={isSubmitting || !username.trim()}
             >
-              Save Changes
+              {isSubmitting ? (
+                <span className="auth-btn-loading">
+                  <Loader2 size={15} className="auth-spin" />
+                  Saving...
+                </span>
+              ) : (
+                "Save changes"
+              )}
             </button>
           </div>
         </form>

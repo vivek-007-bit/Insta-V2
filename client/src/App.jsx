@@ -1,10 +1,11 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppProvider } from "./context/AppContext";
 import MainLayout from "./layouts/MainLayout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import Home from "./pages/Home";
 import Search from "./pages/Search";
+import HashtagPage from "./pages/HashtagPage";
 import Reels from "./pages/Reels";
 import Messages from "./pages/Messages";
 import Notifications from "./pages/Notifications";
@@ -14,6 +15,7 @@ import Saved from "./pages/Saved";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import NotFound from "./pages/NotFound";
 
 // Styles
 import "./styles/variables.css";
@@ -42,7 +44,9 @@ export default function App() {
             }
           >
             <Route index element={<Home />} />
+            <Route path="explore" element={<Search />} />
             <Route path="search" element={<Search />} />
+            <Route path="tags/:tag" element={<HashtagPage />} />
             <Route path="reels" element={<Reels />} />
             <Route path="reels/:reelId" element={<Reels />} />
             <Route path="messages" element={<Messages />} />
@@ -54,8 +58,8 @@ export default function App() {
             <Route path="settings" element={<Settings />} />
           </Route>
 
-          {/* Catch-all redirect to home */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Unknown route fallback (404 page) */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AppProvider>

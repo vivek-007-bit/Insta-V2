@@ -196,7 +196,24 @@ Open your browser at `http://localhost:5173`.
 
 #### Real-Time Socket.IO & Deployment Notes
 - Real-time notification delivery (`new_notification`, `unread_count_updated`) uses **Socket.IO** authenticated via the HTTP-only JWT cookie and scoped to private `user:<userId>` rooms.
-- **Deployment Consideration:** Because WebSockets/Socket.IO require persistent server connections, deploy the backend on a persistent Node.js host (e.g., Render, Railway, Fly.io, or a VPS). If deployed in a stateless/serverless environment (e.g., Vercel Serverless Functions) where WebSockets are not supported, the client automatically falls back to periodic polling (`GET /api/notifications/unread-count`).
+- **Frontend Deployment (Netlify):** Configured exclusively via [client/netlify.toml](client/netlify.toml) (`/* -> /index.html` SPA fallback plus `/api/* -> https://YOUR_BACKEND_HOST/api/:splat` proxy rule). Replace `YOUR_BACKEND_HOST` in `client/netlify.toml` with your deployed backend host and set `VITE_API_BASE_URL=/api` in Netlify's environment variables so API requests stay same-origin (preserving HTTP-only authentication cookies across browsers). If instead calling the backend directly (`VITE_API_BASE_URL=https://<your-backend-host>/api`), set `CLIENT_URL` on the backend to your Netlify origin.
+- **Backend Deployment Consideration:** [server/vercel.json](server/vercel.json) provides independent serverless routing for the backend API. Because WebSockets/Socket.IO require persistent server connections, deploy the backend on a persistent Node.js host (e.g., Render, Railway, Fly.io, or a VPS) for live Socket.IO; in stateless/serverless environments (e.g., Vercel Serverless Functions), the client automatically falls back to periodic polling (`GET /api/notifications/unread-count`).
+
+---
+
+## Demo Data Seeding (Development Only)
+
+Populate MongoDB Atlas and Cloudinary with fictional demo accounts, Cloudinary-hosted avatars/posts/Reels, follow relationships, pending follow requests, likes, and comments:
+
+```bash
+cd server
+npm run seed:demo
+```
+
+- **Idempotent & Non-Destructive:** Existing users (including your personal accounts) and previously seeded assets are preserved and reused without duplicates.
+- **Production Safety Guard:** Refuses to run when `NODE_ENV=production` unless `ALLOW_DEMO_SEED=true` is explicitly provided.
+- **Demo Account Password:** All seeded demo users share the development password `DemoUser@2026` (hashed with bcrypt).
+- **Sample Demo Usernames:** `maya.lin`, `alex.rivera`, `liam.oconnor`, `sophia.patel` (public), and `chloe.dubois`, `elena.rostova`, `ethan.brooks` (private).
 
 ---
 

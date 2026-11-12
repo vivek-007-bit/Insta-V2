@@ -8,17 +8,21 @@
 
   .sidebar {
     width: var(--sidebar-width-compact);
-    padding: 24px 12px 28px 12px;
+    padding: 20px 12px;
     align-items: center;
   }
 
   .sidebar-logo-container {
-    padding: 0 0 28px 0;
+    padding: 4px 0 20px 0;
+    width: 100%;
     justify-content: center;
   }
 
   .sidebar-brand {
+    width: 48px;
+    height: 48px;
     padding: 0;
+    gap: 0;
     justify-content: center;
   }
 
@@ -26,9 +30,16 @@
     display: none;
   }
 
+  .sidebar-nav,
+  .sidebar-bottom {
+    width: 100%;
+    align-items: center;
+  }
+
   .nav-item {
     justify-content: center;
     padding: 0;
+    gap: 0;
     width: 48px;
     height: 48px;
     border-radius: var(--radius-md);
@@ -38,9 +49,13 @@
     display: none;
   }
 
+  .sidebar-collapse-btn {
+    display: none;
+  }
+
   .more-menu-dropdown {
     left: 60px;
-    bottom: 12px;
+    bottom: 0;
   }
 }
 
@@ -221,23 +236,103 @@
   }
 
   /* Profile page adjustments */
-  .profile-header {
-    flex-direction: column !important;
-    gap: 20px !important;
-    padding: 16px !important;
+  .ig-profile-page {
+    padding: 16px 0 40px 0;
   }
 
-  .profile-avatar-large {
-    width: 80px !important;
-    height: 80px !important;
+  .ig-profile-header {
+    grid-template-columns: 80px 1fr;
+    gap: 20px;
+    padding: 0 16px;
+    margin-bottom: 14px;
+    align-items: center;
   }
 
-  .profile-stats {
-    justify-content: space-around !important;
-    border-top: 1px solid var(--border-subtle);
-    border-bottom: 1px solid var(--border-subtle);
-    padding: 10px 0 !important;
+  .ig-profile-avatar-ring {
+    width: 77px;
+    height: 77px;
+  }
+
+  .ig-profile-info-col {
+    gap: 10px;
+  }
+
+  .ig-profile-top-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .ig-profile-actions {
     width: 100%;
+  }
+
+  .ig-profile-actions .ig-profile-btn,
+  .ig-profile-actions .ig-profile-follow-btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ig-profile-stats-desktop,
+  .ig-profile-bio-desktop {
+    display: none;
+  }
+
+  .ig-profile-bio-mobile {
+    display: flex;
+    padding: 0 16px 16px 16px;
+  }
+
+  .ig-profile-stats-mobile {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--border-subtle);
+    padding: 10px 0;
+  }
+
+  .ig-profile-mobile-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .ig-profile-mobile-stat strong {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .ig-profile-tabs {
+    gap: 0;
+    justify-content: space-around;
+  }
+
+  .ig-profile-tab {
+    flex: 1;
+    justify-content: center;
+    height: 44px;
+  }
+
+  .ig-profile-grid {
+    gap: 2px;
+  }
+
+  .ig-profile-skeleton-header {
+    grid-template-columns: 77px 1fr;
+    gap: 18px;
+    padding: 0 16px;
+    margin-bottom: 24px;
+  }
+
+  .ig-profile-skeleton-avatar {
+    width: 77px;
+    height: 77px;
   }
 
   /* Notifications mobile responsiveness */

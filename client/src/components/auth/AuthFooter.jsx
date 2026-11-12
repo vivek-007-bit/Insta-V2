@@ -2,7 +2,6 @@ import React from "react";
 
 export default function AuthFooter() {
   const footerLinks = [
-    "Meta",
     "About",
     "Blog",
     "Jobs",
@@ -11,10 +10,7 @@ export default function AuthFooter() {
     "Privacy",
     "Terms",
     "Locations",
-    "Insta-V2 Lite",
-    "Threads",
-    "Contact Uploading & Non-Users",
-    "Meta Verified"
+    "Insta-V2 Lite"
   ];
 
   return (
@@ -43,7 +39,7 @@ export default function AuthFooter() {
           <option value="de">Deutsch</option>
           <option value="ja">日本語</option>
         </select>
-        <span>© 2026 Insta-V2 from Meta (Frontend Demo)</span>
+        <span>© 2026 Insta-V2</span>
       </div>
     </footer>
   );

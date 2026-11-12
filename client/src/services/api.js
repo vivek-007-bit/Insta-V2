@@ -1,24 +1,60 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // Send and receive HTTP-only cookies
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    Accept: 'application/json'
   }
 });
 
-// Response interceptor for extracting response data and normalizing errors
+const AUTH_PUBLIC_PATHS = ['/auth/login', '/auth/signup', '/auth/logout', '/auth/me'];
+
+// Response interceptor for extracting response data and classifying API errors
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const message =
-      error.response?.data?.message ||
+    const status = error.response?.status || 0;
+    const isNetworkError = !error.response;
+    const rawData = error.response?.data;
+    const isHtmlResponse = typeof rawData === 'string' && rawData.trim().startsWith('<');
+
+    let message =
+      (!isHtmlResponse && rawData?.message) ||
       error.message ||
       'An unexpected network error occurred';
-    return Promise.reject(new Error(message));
+
+    if (isNetworkError) {
+      message = 'Unable to connect to the server. Please check your network connection.';
+    } else if (isHtmlResponse) {
+      message = `API endpoint returned an unexpected HTML page (HTTP ${status}). Verify VITE_API_BASE_URL and server routing.`;
+    }
+
+    const enrichedError = new Error(message);
+    enrichedError.status = status;
+    enrichedError.code = error.code || null;
+    enrichedError.data = !isHtmlResponse ? rawData : null;
+    enrichedError.isNetworkError = isNetworkError;
+    enrichedError.isAuthError = status === 401;
+    enrichedError.isForbidden = status === 403;
+    enrichedError.isNotFound = status === 404;
+    enrichedError.isServerError = status >= 500;
+
+    // Notify AppContext when a protected request fails with 401 (expired/invalid session)
+    const requestUrl = error.config?.url || '';
+    const isAuthLifecycleEndpoint = AUTH_PUBLIC_PATHS.some((p) => requestUrl.includes(p));
+    if (status === 401 && !isAuthLifecycleEndpoint && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('insta:unauthorized', {
+          detail: { message, url: requestUrl }
+        })
+      );
+    }
+
+    return Promise.reject(enrichedError);
   }
 );
 

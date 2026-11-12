@@ -27,6 +27,14 @@ export const authService = {
   // Get current user session from HTTP-only cookie
   getMe: async () => {
     return await api.get('/auth/me');
+  },
+
+  // Check username availability during signup
+  checkUsername: async (username, { signal } = {}) => {
+    return await api.get('/auth/check-username', {
+      params: { username },
+      signal
+    });
   }
 };
 

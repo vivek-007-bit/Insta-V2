@@ -1,20 +1,29 @@
 import React from "react";
-import { Plus } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import { optimizeMediaUrl, getAvatarFallbackUrl } from "../../utils/cloudinaryUrl";
 
 export default function StoriesBar() {
   const {
     currentUser,
     stories,
+    storiesLoading,
+    storiesError,
+    fetchStoriesFeed,
     setActiveStoryIndex,
     setIsCreateStoryOpen
   } = useApp();
 
-  // Find if current user already has existing stories
+  if (!currentUser) return null;
+
+  // Find if current user already has existing active stories
   const currentUserStoryIndex = stories.findIndex(
-    s => s.userId === currentUser.id || s.username === currentUser.username
+    (s) => s.isOwn || s.userId === currentUser.id || s.username === currentUser.username
   );
   const currentUserStory = currentUserStoryIndex !== -1 ? stories[currentUserStoryIndex] : null;
+  const otherStories = stories.filter(
+    (s) => !s.isOwn && s.userId !== currentUser.id && s.username !== currentUser.username
+  );
 
   const handleAvatarClick = () => {
     if (currentUserStory && currentUserStory.stories.length > 0) {
@@ -29,9 +38,13 @@ export default function StoriesBar() {
     setIsCreateStoryOpen(true);
   };
 
+  const ownAvatarUrl =
+    optimizeMediaUrl(currentUser.avatar, { width: 150, isAvatar: true }) ||
+    getAvatarFallbackUrl(currentUser.username);
+
   return (
     <section className="stories-bar" aria-label="Stories">
-      {/* Current User Story Item */}
+      {/* Current User Story Item (Always first) */}
       <div
         className="story-item"
         onClick={handleAvatarClick}
@@ -52,9 +65,13 @@ export default function StoriesBar() {
         >
           <div className="story-avatar-inner">
             <img
-              src={currentUser.avatar}
+              src={ownAvatarUrl}
               alt="Your story"
               className="story-avatar-img"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = getAvatarFallbackUrl(currentUser.username);
+              }}
             />
           </div>
           <button
@@ -70,11 +87,37 @@ export default function StoriesBar() {
         <span className="story-username">Your story</span>
       </div>
 
-      {/* Other Users' Stories list */}
-      {stories
-        .filter(s => s.userId !== currentUser.id && s.username !== currentUser.username)
-        .map((story) => {
-          const originalIndex = stories.findIndex(s => s.id === story.id);
+      {/* Loading Skeletons */}
+      {storiesLoading && stories.length === 0 ? (
+        Array.from({ length: 6 }).map((_, idx) => (
+          <div key={`skeleton_${idx}`} className="story-item story-item-skeleton" aria-hidden="true">
+            <div className="story-avatar-skeleton" />
+            <div className="story-username-skeleton" />
+          </div>
+        ))
+      ) : storiesError && stories.length === 0 ? (
+        <div className="stories-error-inline">
+          <span>Unable to load stories.</span>
+          <button
+            type="button"
+            className="stories-retry-btn"
+            onClick={() => fetchStoriesFeed()}
+          >
+            <RefreshCw size={12} />
+            <span>Retry</span>
+          </button>
+        </div>
+      ) : otherStories.length === 0 ? (
+        <div className="stories-empty-hint">
+          Follow accounts to see their stories here.
+        </div>
+      ) : (
+        otherStories.map((story) => {
+          const originalIndex = stories.findIndex((s) => s.id === story.id);
+          const avatarSrc =
+            optimizeMediaUrl(story.userAvatar, { width: 150, isAvatar: true }) ||
+            getAvatarFallbackUrl(story.username);
+
           return (
             <button
               key={story.id}
@@ -90,16 +133,21 @@ export default function StoriesBar() {
               >
                 <div className="story-avatar-inner">
                   <img
-                    src={story.userAvatar}
+                    src={avatarSrc}
                     alt={story.username}
                     className="story-avatar-img"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = getAvatarFallbackUrl(story.username);
+                    }}
                   />
                 </div>
               </div>
               <span className="story-username">{story.username}</span>
             </button>
           );
-        })}
+        })
+      )}
     </section>
   );
 }
