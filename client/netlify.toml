@@ -6,12 +6,11 @@
   publish = "dist"
 
 # 1. Backend API Proxy (evaluated before SPA fallback)
-# Replace YOUR_BACKEND_HOST with your deployed backend host (e.g. your Vercel backend domain)
-# and set VITE_API_BASE_URL=/api in Netlify environment variables so HTTP-only cookies stay first-party.
-# Note: Netlify does not interpolate runtime env vars inside netlify.toml redirect targets.
+# Proxies /api/* requests to the persistent Render Express server so HTTP-only cookies
+# can also work first-party when VITE_API_BASE_URL=/api is used.
 [[redirects]]
   from = "/api/*"
-  to = "https://YOUR_BACKEND_HOST/api/:splat"
+  to = "https://instav2-server.onrender.com/api/:splat"
   status = 200
   force = true
 

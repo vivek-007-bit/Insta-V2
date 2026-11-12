@@ -20,14 +20,12 @@ const connectDB = async () => {
   if (!mongoUri) {
     const err = new Error('MONGO_URI is not defined in environment variables');
     console.error('[MongoDB] Configuration error:', err.message);
-    if (process.env.VERCEL) throw err;
     process.exit(1);
   }
 
   if (!mongoUri.startsWith('mongodb://') && !mongoUri.startsWith('mongodb+srv://')) {
     const err = new Error('MONGO_URI must start with "mongodb://" or "mongodb+srv://"');
     console.error('[MongoDB] Configuration error:', err.message);
-    if (process.env.VERCEL) throw err;
     process.exit(1);
   }
 
@@ -69,7 +67,6 @@ const connectDB = async () => {
         );
       }
 
-      if (process.env.VERCEL) throw error;
       process.exit(1);
     } finally {
       connectionPromise = null;

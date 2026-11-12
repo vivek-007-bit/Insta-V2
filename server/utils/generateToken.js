@@ -31,11 +31,16 @@ export const getJwtSecret = () =>
   process.env.JWT_SECRET || process.env.SECRET_KEY || 'default_jwt_secret_insta_v2';
 
 /**
- * Builds consistent HTTP-only cookie options for development vs production
- * (supporting both same-site rewrites and cross-site Vercel deployments).
+ * Builds consistent HTTP-only cookie options for local HTTP dev vs Render HTTPS production.
+ * Detects HTTPS behind Render's reverse proxy even if NODE_ENV was not explicitly set.
  */
 export const getCookieOptions = (req = null) => {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const forwardedProto = String(req?.headers?.['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  const isHttpsRequest = Boolean(req?.secure) || forwardedProto === 'https';
+  const isProduction = process.env.NODE_ENV === 'production' || isHttpsRequest;
 
   let sameSite = isProduction ? 'none' : 'lax';
   if (process.env.COOKIE_SAME_SITE) {
@@ -43,7 +48,9 @@ export const getCookieOptions = (req = null) => {
   } else if (isProduction && req?.headers?.origin && req?.headers?.host) {
     try {
       const originHost = new URL(req.headers.origin).host;
-      const serverHost = req.headers['x-forwarded-host'] || req.headers.host;
+      const serverHost = String(req.headers['x-forwarded-host'] || req.headers.host)
+        .split(',')[0]
+        .trim();
       if (originHost && serverHost && originHost === serverHost) {
         sameSite = 'lax';
       }
@@ -52,21 +59,15 @@ export const getCookieOptions = (req = null) => {
     }
   }
 
-  // Browsers reject SameSite=None without Secure=true; over HTTP localhost force lax/false
+  // Browsers reject SameSite=None without Secure=true; local HTTP uses SameSite=Lax + Secure=false
   const isSecure = isProduction || sameSite === 'none';
 
-  const options = {
+  return {
     httpOnly: true,
     secure: isSecure,
     sameSite,
     path: '/'
   };
-
-  if (process.env.COOKIE_DOMAIN && process.env.COOKIE_DOMAIN.trim()) {
-    options.domain = process.env.COOKIE_DOMAIN.trim();
-  }
-
-  return options;
 };
 
 export const generateToken = (res, userId, req = null) => {
@@ -88,6 +89,5 @@ export const generateToken = (res, userId, req = null) => {
 };
 
 export const clearTokenCookie = (res, req = null) => {
-  const baseOptions = getCookieOptions(req);
-  res.clearCookie('token', baseOptions);
+  res.clearCookie('token', getCookieOptions(req));
 };

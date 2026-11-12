@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
+import { getSocketOrigin } from "../services/api";
 import authService from "../services/authService";
 import postService from "../services/postService";
 import userService from "../services/userService";
@@ -538,9 +539,8 @@ export function AppProvider({ children }) {
     fetchNotifications(1, false);
     fetchConversations();
 
-    // Derive Socket.IO server origin from VITE_API_BASE_URL
-    const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
-    const socketOrigin = apiBase.replace(/\/api\/?$/, "");
+    // Derive Socket.IO server origin from centralized API configuration
+    const socketOrigin = getSocketOrigin();
 
     const socket = io(socketOrigin, {
       withCredentials: true,

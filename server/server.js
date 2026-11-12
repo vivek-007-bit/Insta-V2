@@ -3,6 +3,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import mongoose from 'mongoose';
 import connectDB from './config/db.js';
 import { initSocket } from './config/socket.js';
 import authRoutes from './routes/authRoutes.js';
@@ -21,12 +22,16 @@ import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 const app = express();
 const httpServer = http.createServer(app);
 
-// Trust reverse proxy for secure cookies and rate limiting behind Vercel/Render/Nginx
+// Trust Render's reverse proxy so req.secure, x-forwarded-proto, and rate limiting work properly
 app.set('trust proxy', 1);
 
 // Build explicit CORS allowlist (comma-separated CLIENT_URL; never wildcard '*' with credentials)
 const parseAllowedOrigins = () => {
-  const configured = (process.env.CLIENT_URL || 'http://localhost:5173')
+  const rawOrigins = [process.env.CLIENT_URL, process.env.FRONTEND_URL]
+    .filter(Boolean)
+    .join(',');
+
+  const configured = rawOrigins
     .split(',')
     .map((o) => o.trim().replace(/\/+$/, ''))
     .filter(Boolean);
@@ -42,19 +47,11 @@ const parseAllowedOrigins = () => {
 const allowedOrigins = parseAllowedOrigins();
 
 const corsOriginValidator = (origin, callback) => {
-  // Allow same-origin / server-to-server / curl requests without an Origin header
+  // Allow non-browser / same-origin / health-check requests without an Origin header
   if (!origin) return callback(null, true);
 
   const normalized = origin.trim().replace(/\/+$/, '');
   if (allowedOrigins.includes(normalized)) {
-    return callback(null, true);
-  }
-
-  // Optional Vercel preview origin opt-in (exact HTTPS vercel.app subdomain check)
-  if (
-    process.env.ALLOW_VERCEL_PREVIEWS === 'true' &&
-    /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(normalized)
-  ) {
     return callback(null, true);
   }
 
@@ -73,22 +70,44 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// Initialize Socket.IO with cookie-based JWT auth (persistent Node server mode)
-if (!process.env.VERCEL) {
-  initSocket(httpServer, corsOriginValidator);
-}
-
-// Body parsers & Cookie parser
+// Body parsers & Cookie parser (must run before auth & API routes)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Health Check Endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+// Initialize Socket.IO with cookie-based JWT auth on persistent HTTP server
+initSocket(httpServer, corsOriginValidator);
+
+// Public Root & Health Check Endpoints
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Insta-V2 API is running',
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
-// Ensure MongoDB connection is ready before handling API routes (needed in serverless mode)
+app.get('/api/health', (req, res) => {
+  const dbStates = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  const readyState = mongoose.connection.readyState;
+  const isHealthy = readyState === 1;
+
+  res.status(isHealthy ? 200 : 503).json({
+    success: isHealthy,
+    status: isHealthy ? 'ok' : 'degraded',
+    server: 'running',
+    database: dbStates[readyState] || 'unknown',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Ensure MongoDB connection is active before handling API routes
 app.use('/api', async (req, res, next) => {
   try {
     await connectDB();
@@ -98,7 +117,7 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
-// Mount Routes
+// Mount API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/users', userRoutes);
@@ -122,12 +141,10 @@ const startServer = async () => {
   await connectDB();
 
   httpServer.listen(PORT, () => {
-    console.log('[Insta-V2 Server] API server ready');
+    console.log(`[Insta-V2 Server] Persistent Express + Socket.IO server listening on port ${PORT}`);
   });
 };
 
-if (!process.env.VERCEL) {
-  startServer();
-}
+startServer();
 
 export default app;

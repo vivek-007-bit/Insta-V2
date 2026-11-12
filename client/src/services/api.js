@@ -1,6 +1,27 @@
 import axios from 'axios';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
+const PROD_RENDER_ORIGIN = 'https://instav2-server.onrender.com';
+
+const rawEnvBase =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  '';
+
+export const API_BASE_URL = (
+  rawEnvBase ||
+  (import.meta.env.PROD ? '/api' : 'http://localhost:8000/api')
+).replace(/\/+$/, '');
+
+export const getSocketOrigin = () => {
+  const explicitSocket = (import.meta.env.VITE_SOCKET_URL || '').trim().replace(/\/+$/, '');
+  if (explicitSocket) return explicitSocket;
+
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    return API_BASE_URL.replace(/\/api\/?$/, '');
+  }
+
+  return import.meta.env.PROD ? PROD_RENDER_ORIGIN : 'http://localhost:8000';
+};
 
 const api = axios.create({
   baseURL: API_BASE_URL,
