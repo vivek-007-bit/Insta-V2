@@ -27,8 +27,16 @@ export const parseDurationToMs = (expiresIn) => {
   return value * (multipliers[unit] || 1000);
 };
 
-export const getJwtSecret = () =>
-  process.env.JWT_SECRET || process.env.SECRET_KEY || 'default_jwt_secret_insta_v2';
+export const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET || process.env.SECRET_KEY;
+  if (secret && secret.trim()) {
+    return secret.trim();
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET environment variable is required in production');
+  }
+  return 'default_jwt_secret_insta_v2';
+};
 
 /**
  * Builds consistent HTTP-only cookie options for local HTTP dev vs Render HTTPS production.
