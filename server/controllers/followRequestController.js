@@ -2,6 +2,7 @@ import FollowRequest from '../models/FollowRequest.js';
 import Follow from '../models/Follow.js';
 import User from '../models/User.js';
 import notificationService from '../services/notificationService.js';
+import { scheduleUserCacheInvalidation } from '../services/mlRecommendationService.js';
 
 // @desc    Get incoming pending follow requests for the authenticated user
 // @route   GET /api/follow-requests
@@ -134,6 +135,9 @@ export const acceptRequest = async (req, res, next) => {
 
     const followersCount = await Follow.countDocuments({ following: req.user._id });
 
+    scheduleUserCacheInvalidation(requestDoc.requester, ['users', 'posts']);
+    scheduleUserCacheInvalidation(req.user._id, ['users', 'posts']);
+
     return res.status(200).json({
       success: true,
       message: 'Follow request accepted',
@@ -218,6 +222,8 @@ export const cancelRequest = async (req, res, next) => {
       type: 'follow_request',
       entityId: requestDoc._id
     });
+
+    scheduleUserCacheInvalidation(requestDoc.requester, ['users']);
 
     return res.status(200).json({
       success: true,

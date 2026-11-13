@@ -4,9 +4,13 @@
 .env*.local
 *.env
 !.env.example
+!**/.env.example
 
 # Dependencies
 node_modules/
+.venv/
+__pycache__/
+*.py[cod]
 
 # Logs
 logs/
@@ -19,6 +23,7 @@ yarn-error.log*
 dist/
 dist-ssr/
 build/
+db.sqlite3
 
 # Editor / OS
 .DS_Store

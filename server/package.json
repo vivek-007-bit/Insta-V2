@@ -14,7 +14,10 @@
     "test:notifications": "node test-notifications.js",
     "test:stories": "node test-stories.js",
     "test:messages": "node test-messages.js",
-    "test:search": "node test-search.js"
+    "test:search": "node test-search.js",
+    "test:recommendations": "node test-recommendations.js",
+    "test:shuffle": "node test-shuffle-recommendations.js",
+    "test:socket": "node test-socket.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -26,6 +29,7 @@
     "express-rate-limit": "^7.5.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.13.0",
+    "redis": "^6.3.1",
     "socket.io": "^4.8.4"
   },
   "devDependencies": {

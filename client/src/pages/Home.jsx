@@ -9,6 +9,8 @@ export default function Home() {
   const {
     posts,
     feedLoading,
+    feedError,
+    fetchFeed,
     loadingMoreFeed,
     feedHasMore,
     loadMoreFeed,
@@ -47,6 +49,24 @@ export default function Home() {
           {feedLoading && posts.length === 0 ? (
             <div style={{ padding: "48px 16px", textAlign: "center", color: "var(--text-secondary)" }}>
               Loading feed...
+            </div>
+          ) : feedError && posts.length === 0 ? (
+            <div style={{ padding: "48px 16px", textAlign: "center", color: "var(--text-secondary)" }}>
+              <p style={{ marginBottom: "12px" }}>{feedError}</p>
+              <button
+                type="button"
+                onClick={fetchFeed}
+                style={{
+                  backgroundColor: "var(--accent-blue)",
+                  color: "#ffffff",
+                  padding: "8px 18px",
+                  borderRadius: "var(--radius-md)",
+                  fontSize: "var(--font-size-sm)",
+                  fontWeight: "600"
+                }}
+              >
+                Retry
+              </button>
             </div>
           ) : posts.length === 0 ? (
             <div

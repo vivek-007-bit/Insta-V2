@@ -1,5 +1,5 @@
 // Comprehensive Search & Discovery backend integration tests
-import 'dotenv/config';
+import './config/env.js';
 
 const BASE_URL = 'http://localhost:8000';
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'demo';

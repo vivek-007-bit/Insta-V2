@@ -13,8 +13,26 @@ export const API_BASE_URL = (
 ).replace(/\/+$/, '');
 
 export const getSocketOrigin = () => {
-  const explicitSocket = (import.meta.env.VITE_SOCKET_URL || '').trim().replace(/\/+$/, '');
-  if (explicitSocket) return explicitSocket;
+  let explicitSocket = (import.meta.env.VITE_SOCKET_URL || '').trim().replace(/\/+$/, '');
+
+  if (explicitSocket) {
+    // Normalize ws:// and wss:// protocols to http:// and https:// (io() expects http(s))
+    if (/^wss:\/\//i.test(explicitSocket)) {
+      explicitSocket = explicitSocket.replace(/^wss:\/\//i, 'https://');
+    } else if (/^ws:\/\//i.test(explicitSocket)) {
+      explicitSocket = explicitSocket.replace(/^ws:\/\//i, 'http://');
+    }
+
+    // Guard against accidental https://localhost or https://127.0.0.1 in local development
+    if (/^https:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(explicitSocket)) {
+      const isHttpPage = typeof window !== 'undefined' && window.location.protocol === 'http:';
+      if (!import.meta.env.PROD || isHttpPage) {
+        explicitSocket = explicitSocket.replace(/^https:/i, 'http:');
+      }
+    }
+
+    return explicitSocket;
+  }
 
   if (/^https?:\/\//i.test(API_BASE_URL)) {
     return API_BASE_URL.replace(/\/api\/?$/, '');

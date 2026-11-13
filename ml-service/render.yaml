@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: instav2-ml-service
+    env: python
+    rootDir: ml-service
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn ml_project.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 30
+    healthCheckPath: /health/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DEBUG
+        value: "false"
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "localhost,127.0.0.1,.onrender.com"
+      - key: DISABLE_COLLECTSTATIC
+        value: "1"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: INTERNAL_SERVICE_SECRET
+        generateValue: true

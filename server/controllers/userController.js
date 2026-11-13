@@ -10,6 +10,7 @@ import Comment from '../models/Comment.js';
 import { canViewUserContent } from '../middleware/privacyMiddleware.js';
 import { formatUserWithStats } from './authController.js';
 import notificationService from '../services/notificationService.js';
+import { scheduleUserCacheInvalidation } from '../services/mlRecommendationService.js';
 
 // Helper to resolve user by ObjectId or username
 const findUserByIdOrUsername = async (idOrUsername) => {
@@ -548,6 +549,8 @@ export const followUser = async (req, res, next) => {
         entityId: req.user._id
       });
 
+      scheduleUserCacheInvalidation(req.user._id, ['users', 'posts']);
+
       return res.status(201).json({
         success: true,
         status: 'following',
@@ -592,6 +595,8 @@ export const followUser = async (req, res, next) => {
       entityType: 'FollowRequest',
       entityId: requestDoc._id
     });
+
+    scheduleUserCacheInvalidation(req.user._id, ['users']);
 
     return res.status(201).json({
       success: true,
@@ -646,6 +651,8 @@ export const unfollowUser = async (req, res, next) => {
       type: 'follow',
       entityId: req.user._id
     });
+
+    scheduleUserCacheInvalidation(req.user._id, ['users', 'posts']);
 
     return res.status(200).json({
       success: true,

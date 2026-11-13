@@ -4,6 +4,7 @@ import {
   Grid,
   Film,
   Bookmark,
+  UserSquare2,
   Settings,
   CheckCircle2,
   Lock,
@@ -536,6 +537,17 @@ export default function Profile() {
                 <span>Saved</span>
               </button>
             )}
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "tagged"}
+              className={`ig-profile-tab ${activeTab === "tagged" ? "active" : ""}`}
+              onClick={() => setActiveTab("tagged")}
+            >
+              <UserSquare2 size={13} />
+              <span>Tagged</span>
+            </button>
           </nav>
 
           {/* POSTS TAB */}
@@ -684,6 +696,21 @@ export default function Profile() {
                 ))}
               </div>
             )
+          )}
+
+          {/* TAGGED TAB */}
+          {activeTab === "tagged" && (
+            <div className="ig-profile-empty-state">
+              <div className="ig-profile-empty-circle">
+                <UserSquare2 size={28} strokeWidth={1.5} />
+              </div>
+              <h3>Photos of you</h3>
+              <p>
+                {isOwnProfile
+                  ? "When people tag you in photos, they'll appear here."
+                  : `When people tag @${profileUser.username} in photos, they'll appear here.`}
+              </p>
+            </div>
           )}
         </>
       )}

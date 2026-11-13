@@ -109,7 +109,6 @@ export default function StoriesBar() {
         </div>
       ) : otherStories.length === 0 ? (
         <div className="stories-empty-hint">
-          Follow accounts to see their stories here.
         </div>
       ) : (
         otherStories.map((story) => {

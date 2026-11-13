@@ -241,10 +241,10 @@
   }
 
   .ig-profile-header {
-    grid-template-columns: 80px 1fr;
+    grid-template-columns: 77px 1fr;
     gap: 20px;
     padding: 0 16px;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
     align-items: center;
   }
 
@@ -253,24 +253,33 @@
     height: 77px;
   }
 
+  .ig-profile-username {
+    font-size: 18px;
+  }
+
   .ig-profile-info-col {
-    gap: 10px;
+    gap: 12px;
   }
 
   .ig-profile-top-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
   }
 
   .ig-profile-actions {
     width: 100%;
+    display: flex;
+    gap: 8px;
   }
 
   .ig-profile-actions .ig-profile-btn,
   .ig-profile-actions .ig-profile-follow-btn {
     flex: 1;
-    min-width: 0;
+    min-width: 0 !important;
+    height: 32px !important;
+    font-size: 14px !important;
+    padding: 0 12px !important;
   }
 
   .ig-profile-stats-desktop,
@@ -280,21 +289,26 @@
 
   .ig-profile-bio-mobile {
     display: flex;
+    flex-direction: column;
+    gap: 3px;
     padding: 0 16px 16px 16px;
+    font-size: 14px;
+    line-height: 20px;
   }
 
   .ig-profile-stats-mobile {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     border-top: 1px solid var(--border-subtle);
-    padding: 10px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 12px 0;
   }
 
   .ig-profile-mobile-stat {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1px;
+    gap: 2px;
     font-size: 13px;
     color: var(--text-secondary);
     background: none;
@@ -305,7 +319,7 @@
   .ig-profile-mobile-stat strong {
     color: var(--text-primary);
     font-weight: 600;
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .ig-profile-tabs {
@@ -317,6 +331,7 @@
     flex: 1;
     justify-content: center;
     height: 44px;
+    font-size: 12px;
   }
 
   .ig-profile-grid {

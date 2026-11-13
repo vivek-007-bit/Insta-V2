@@ -8,6 +8,7 @@ import Follow from '../models/Follow.js';
 import FollowRequest from '../models/FollowRequest.js';
 import { canViewUserContent } from '../middleware/privacyMiddleware.js';
 import notificationService from '../services/notificationService.js';
+import { scheduleUserCacheInvalidation } from '../services/mlRecommendationService.js';
 
 // Validate Cloudinary video URL belongs to configured cloud name
 const isValidCloudinaryVideoUrl = (url) => {
@@ -47,7 +48,7 @@ const buildCloudinaryThumbnail = (publicId) => {
 };
 
 // Enrich reels with creator follow status and viewer like status
-const enrichReelsForViewer = async (reels, viewerId) => {
+export const enrichReelsForViewer = async (reels, viewerId) => {
   const validReels = (reels || []).filter((r) => r && r.user);
   if (validReels.length === 0) return [];
 
@@ -438,6 +439,8 @@ export const likeReel = async (req, res, next) => {
       entityId: reel._id
     });
 
+    scheduleUserCacheInvalidation(req.user._id, ['reels']);
+
     return res.status(201).json({
       success: true,
       liked: true,
@@ -497,6 +500,8 @@ export const unlikeReel = async (req, res, next) => {
       type: 'reel_like',
       entityId: reel._id
     });
+
+    scheduleUserCacheInvalidation(req.user._id, ['reels']);
 
     return res.status(200).json({
       success: true,
@@ -618,6 +623,8 @@ export const addReelComment = async (req, res, next) => {
       entityId: reel._id,
       message: comment.text
     });
+
+    scheduleUserCacheInvalidation(req.user._id, ['reels']);
 
     return res.status(201).json({
       success: true,

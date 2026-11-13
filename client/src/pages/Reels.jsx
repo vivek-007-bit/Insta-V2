@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import reelService, { getOptimizedVideoUrl } from "../services/reelService";
+import recommendationService from "../services/recommendationService";
 import userService from "../services/userService";
 import followRequestService from "../services/followRequestService";
 import ReelUploadModal from "../components/modals/ReelUploadModal";
@@ -57,6 +58,7 @@ export default function Reels() {
   const scrollTimeoutRef = useRef(null);
   const feedbackTimeoutRef = useRef(null);
   const touchStartYRef = useRef(null);
+  const watchReportedRef = useRef({});
 
   // Fetch initial reels (and specific shared reel if :reelId param exists)
   const loadInitialReels = useCallback(async () => {
@@ -77,8 +79,18 @@ export default function Reels() {
         }
       }
 
-      const feedRes = await reelService.getReels(1, 6);
-      const feedList = feedRes.reels || [];
+      let feedList = [];
+      try {
+        const recRes = await recommendationService.getRecommendedReels(1, 8);
+        feedList = recRes?.reels || [];
+        setHasMore(Boolean(recRes?.hasMore));
+        setNextCursor(null);
+      } catch {
+        const feedRes = await reelService.getReels(1, 6);
+        feedList = feedRes?.reels || [];
+        setHasMore(Boolean(feedRes?.hasMore));
+        setNextCursor(feedRes?.nextCursor || null);
+      }
 
       if (targetReel) {
         const filtered = feedList.filter((r) => r.id !== targetReel.id);
@@ -87,8 +99,6 @@ export default function Reels() {
         setReels(feedList);
       }
 
-      setHasMore(Boolean(feedRes.hasMore));
-      setNextCursor(feedRes.nextCursor || null);
       setCurrentIndex(0);
     } catch (err) {
       showToast(err.message || "Failed to load Reels");
@@ -103,25 +113,34 @@ export default function Reels() {
 
   // Infinite scroll fetch next batch
   const loadMoreReels = useCallback(async () => {
-    if (loadingMore || !hasMore || !nextCursor) return;
+    if (loadingMore || !hasMore) return;
     setLoadingMore(true);
 
     try {
-      const res = await reelService.getReels(1, 6, nextCursor);
-      const incoming = res.reels || [];
+      let incoming = [];
+      if (nextCursor) {
+        const res = await reelService.getReels(1, 6, nextCursor);
+        incoming = res.reels || [];
+        setHasMore(Boolean(res.hasMore));
+        setNextCursor(res.nextCursor || null);
+      } else {
+        const page = Math.floor(reels.length / 8) + 1;
+        const res = await recommendationService.getRecommendedReels(page, 8);
+        incoming = res.reels || [];
+        setHasMore(Boolean(res.hasMore));
+      }
+
       setReels((prev) => {
         const existingIds = new Set(prev.map((r) => r.id));
         const uniqueIncoming = incoming.filter((r) => !existingIds.has(r.id));
         return [...prev, ...uniqueIncoming];
       });
-      setHasMore(Boolean(res.hasMore));
-      setNextCursor(res.nextCursor || null);
     } catch (err) {
       console.error("[Reels] Pagination error:", err.message);
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, nextCursor]);
+  }, [loadingMore, hasMore, nextCursor, reels.length]);
 
   // Trigger infinite scroll when approaching end of list
   useEffect(() => {
@@ -713,6 +732,23 @@ export default function Reels() {
                             playsInline
                             className="reel-video"
                             onClick={() => togglePlay(reel.id)}
+                            onTimeUpdate={(e) => {
+                              const v = e.currentTarget;
+                              if (!v || !v.duration || !reel.id) return;
+                              const dur = v.duration;
+                              const cur = v.currentTime;
+                              const rate = cur / dur;
+                              if ((rate >= 0.25 || cur >= 3) && !watchReportedRef.current[reel.id]) {
+                                watchReportedRef.current[reel.id] = true;
+                                recommendationService.recordEvent({
+                                  contentType: "reel",
+                                  contentId: reel.id,
+                                  eventType: "watch",
+                                  watchDurationSec: Math.round(cur),
+                                  completionRate: Number(rate.toFixed(2))
+                                });
+                              }
+                            }}
                             onError={() =>
                               setVideoErrors((prev) => ({ ...prev, [reel.id]: true }))
                             }

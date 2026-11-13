@@ -3977,6 +3977,88 @@
   flex-shrink: 0;
 }
 
+/* Instagram Standard Follow Button Component */
+.ig-btn-follow {
+  height: 32px;
+  min-width: 82px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+  white-space: nowrap;
+  box-sizing: border-box;
+  text-decoration: none;
+  user-select: none;
+}
+
+.ig-btn-follow:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Primary (Not following -> Follow) */
+.ig-btn-follow--primary {
+  background-color: #0095f6;
+  color: #ffffff;
+}
+
+.ig-btn-follow--primary:hover:not(:disabled) {
+  background-color: #1877f2;
+}
+
+.ig-btn-follow--primary:active:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* Secondary (Following) */
+.ig-btn-follow--secondary,
+.ig-btn-follow--requested {
+  background-color: var(--accent-gray-btn);
+  color: var(--text-primary);
+}
+
+.ig-btn-follow--secondary:hover:not(:disabled),
+.ig-btn-follow--requested:hover:not(:disabled) {
+  background-color: var(--accent-gray-btn-hover);
+}
+
+.ig-btn-follow--secondary:active:not(:disabled),
+.ig-btn-follow--requested:active:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* Text link variant (e.g. right panel recommendations) */
+.btn-follow-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.btn-follow-link:hover:not(:disabled) {
+  color: var(--accent-blue-hover);
+}
+
+.btn-follow-link.following {
+  color: var(--text-secondary);
+}
+
+.btn-follow-link:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .ig-profile-actions {
   display: flex;
   align-items: center;
@@ -3990,7 +4072,7 @@
   border-radius: 8px;
   background-color: var(--accent-gray-btn);
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: 14px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -3998,8 +4080,9 @@
   gap: 6px;
   border: none;
   cursor: pointer;
-  transition: background-color var(--transition-fast);
+  transition: background-color var(--transition-fast), opacity var(--transition-fast);
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .ig-profile-btn:hover:not(:disabled) {
@@ -4012,18 +4095,21 @@
 }
 
 .ig-profile-btn.primary {
-  background-color: var(--accent-blue);
+  background-color: #0095f6;
   color: #ffffff;
 }
 
 .ig-profile-btn.primary:hover:not(:disabled) {
-  background-color: var(--accent-blue-hover);
+  background-color: #1877f2;
 }
 
 .ig-profile-follow-btn {
   height: 32px !important;
-  padding: 0 18px !important;
+  min-width: 96px;
+  padding: 0 20px !important;
   border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -4038,6 +4124,9 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
   transition: background-color var(--transition-fast);
 }
 
@@ -4060,6 +4149,16 @@
   background: none;
   border: none;
   padding: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.ig-profile-stat-item strong,
+.ig-profile-stat-btn strong {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .ig-profile-stat-btn.is-interactive {
@@ -4073,9 +4172,9 @@
 .ig-profile-bio-block {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 20px;
   color: var(--text-primary);
 }
 
@@ -4123,6 +4222,7 @@
 .ig-profile-tab {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   height: 52px;
   background: none;
@@ -4133,7 +4233,7 @@
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   cursor: pointer;
   transition: color var(--transition-fast);
 }
@@ -4198,9 +4298,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 24px;
-  font-size: 15px;
-  font-weight: 600;
+  gap: 28px;
+  font-size: 16px;
+  font-weight: 700;
   opacity: 0;
   transition: opacity 0.16s ease;
   z-index: 3;
@@ -4214,7 +4314,7 @@
 .ig-profile-tile-overlay span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
 }
 
 /* Private Guard & Empty States */

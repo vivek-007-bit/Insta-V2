@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Loader2 } from "lucide-react";
 import userService from "../../services/userService";
 import followRequestService from "../../services/followRequestService";
 import { useApp } from "../../context/AppContext";
@@ -8,7 +9,8 @@ export default function FollowButton({
   initialStatus,
   onStatusChange,
   className = "",
-  style = {}
+  style = {},
+  variant = "button" // "button" | "link"
 }) {
   const { currentUser, showToast, updateFollowState } = useApp();
   const [loading, setLoading] = useState(false);
@@ -73,33 +75,53 @@ export default function FollowButton({
   };
 
   let buttonText = "Follow";
-  let buttonVariant = "primary";
+  let statusVariant = "primary";
 
   if (isFollowing) {
     buttonText = "Following";
-    buttonVariant = "secondary";
+    statusVariant = "secondary";
   } else if (isPending) {
     buttonText = "Requested";
-    buttonVariant = "secondary";
+    statusVariant = "requested";
   }
+
+  if (variant === "link") {
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading}
+        className={`btn-follow-link ${isFollowing ? "following" : ""} ${className}`}
+        style={style}
+      >
+        {loading ? "..." : buttonText}
+      </button>
+    );
+  }
+
+  const variantClass =
+    statusVariant === "secondary"
+      ? "ig-btn-follow--secondary"
+      : statusVariant === "requested"
+      ? "ig-btn-follow--requested"
+      : "ig-btn-follow--primary";
 
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={loading}
-      className={`btn-follow ${buttonVariant === "secondary" ? "following" : ""} ${className}`}
-      style={{
-        padding: "6px 16px",
-        borderRadius: "var(--radius-md)",
-        fontSize: "var(--font-size-sm)",
-        fontWeight: "600",
-        cursor: loading ? "wait" : "pointer",
-        opacity: loading ? 0.7 : 1,
-        ...style
-      }}
+      className={`ig-btn-follow ${variantClass} ${className}`}
+      style={style}
     >
-      {buttonText}
+      {loading ? (
+        <>
+          <Loader2 size={14} className="auth-spin" />
+          <span>{buttonText}</span>
+        </>
+      ) : (
+        buttonText
+      )}
     </button>
   );
 }

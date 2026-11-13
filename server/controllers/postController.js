@@ -6,9 +6,10 @@ import Like from '../models/Like.js';
 import Comment from '../models/Comment.js';
 import { canViewUserContent } from '../middleware/privacyMiddleware.js';
 import notificationService from '../services/notificationService.js';
+import { scheduleUserCacheInvalidation } from '../services/mlRecommendationService.js';
 
 // Helper to format post with author, like status, and comment previews
-const enrichPostsForViewer = async (posts, viewerId) => {
+export const enrichPostsForViewer = async (posts, viewerId) => {
   if (!posts || posts.length === 0) return [];
   const postIds = posts.map((p) => p._id);
 
@@ -281,6 +282,8 @@ export const likePost = async (req, res, next) => {
       entityId: post._id
     });
 
+    scheduleUserCacheInvalidation(req.user._id, ['posts']);
+
     return res.status(201).json({
       success: true,
       liked: true,
@@ -340,6 +343,8 @@ export const unlikePost = async (req, res, next) => {
       type: 'like',
       entityId: post._id
     });
+
+    scheduleUserCacheInvalidation(req.user._id, ['posts']);
 
     return res.status(200).json({
       success: true,
@@ -460,6 +465,8 @@ export const addComment = async (req, res, next) => {
       entityId: post._id,
       message: comment.text
     });
+
+    scheduleUserCacheInvalidation(req.user._id, ['posts']);
 
     return res.status(201).json({
       success: true,

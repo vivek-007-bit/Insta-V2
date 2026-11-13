@@ -9,9 +9,7 @@ import notificationService from "../services/notificationService";
 import storyService from "../services/storyService";
 import messageService from "../services/messageService";
 import searchService, { clearSearchCache } from "../services/searchService";
-import {
-  INITIAL_REELS
-} from "../data/demoData";
+import recommendationService from "../services/recommendationService";
 
 const AppContext = createContext();
 
@@ -205,6 +203,10 @@ export function AppProvider({ children }) {
   const [storiesError, setStoriesError] = useState("");
   const [activeStoryIndex, setActiveStoryIndex] = useState(null);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
+  const [suggestedUsersLoading, setSuggestedUsersLoading] = useState(false);
+  const [suggestedUsersError, setSuggestedUsersError] = useState("");
+  const [suggestedUsersPage, setSuggestedUsersPage] = useState(1);
+  const [suggestedUsersHasMore, setSuggestedUsersHasMore] = useState(false);
   const [followRequests, setFollowRequests] = useState([]);
 
   // Conversations, Messages & Real Backend Notifications
@@ -271,11 +273,22 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Load feed posts from MongoDB
+  // Load recommended posts feed from Node.js (Cache -> Django ML -> MongoDB fallback)
+  const [feedError, setFeedError] = useState("");
+  const feedInFlightRef = useRef(false);
+
   const fetchFeed = useCallback(async () => {
+    if (feedInFlightRef.current) return;
+    feedInFlightRef.current = true;
     setFeedLoading(true);
+    setFeedError("");
     try {
-      const res = await postService.getFeedPosts(1, 15);
+      let res;
+      try {
+        res = await recommendationService.getRecommendedPosts(1, 15);
+      } catch {
+        res = await postService.getFeedPosts(1, 15);
+      }
       if (res && Array.isArray(res.posts)) {
         setPosts(res.posts);
         setFeedHasMore(Boolean(res.hasMore));
@@ -283,18 +296,25 @@ export function AppProvider({ children }) {
       }
     } catch (err) {
       console.error("[Feed] Error fetching posts:", err.message);
+      setFeedError(err.message || "Could not load feed.");
     } finally {
+      feedInFlightRef.current = false;
       setFeedLoading(false);
     }
   }, []);
 
-  // Load next page of feed posts
+  // Load next page of recommended feed posts
   const loadMoreFeed = useCallback(async () => {
     if (loadingMoreFeed || !feedHasMore) return;
     setLoadingMoreFeed(true);
     const nextPage = feedPage + 1;
     try {
-      const res = await postService.getFeedPosts(nextPage, 15);
+      let res;
+      try {
+        res = await recommendationService.getRecommendedPosts(nextPage, 15);
+      } catch {
+        res = await postService.getFeedPosts(nextPage, 15);
+      }
       if (res && Array.isArray(res.posts)) {
         setPosts((prev) => {
           const existingIds = new Set(prev.map((p) => p.id));
@@ -311,17 +331,47 @@ export function AppProvider({ children }) {
     }
   }, [loadingMoreFeed, feedHasMore, feedPage]);
 
-  // Load suggested users from MongoDB
-  const fetchSuggestions = useCallback(async () => {
+  // Load recommended users from ML recommendation pipeline (falling back to searchService.getSuggestions)
+  const fetchSuggestions = useCallback(async (page = 1, append = false) => {
+    setSuggestedUsersLoading(true);
+    setSuggestedUsersError("");
     try {
-      const res = await searchService.getSuggestions(10);
-      if (res && Array.isArray(res.users)) {
-        setSuggestedUsers(res.users);
+      let usersList = [];
+      let hasMore = false;
+      try {
+        const res = await recommendationService.getRecommendedUsers(page, 10);
+        if (res && Array.isArray(res.users)) {
+          usersList = res.users;
+          hasMore = Boolean(res.hasMore);
+        }
+      } catch {
+        // Fallback to search suggestions if recommendations endpoint errors
+        const fallbackRes = await searchService.getSuggestions(10);
+        if (fallbackRes && Array.isArray(fallbackRes.users)) {
+          usersList = fallbackRes.users;
+          hasMore = false;
+        }
       }
+
+      setSuggestedUsers((prev) => {
+        if (!append || page === 1) return usersList;
+        const seen = new Set(prev.map((u) => u.id));
+        return [...prev, ...usersList.filter((u) => !seen.has(u.id))];
+      });
+      setSuggestedUsersPage(page);
+      setSuggestedUsersHasMore(hasMore);
     } catch (err) {
       console.error("[Users] Error fetching suggestions:", err.message);
+      setSuggestedUsersError(err.message || "Failed to load user suggestions");
+    } finally {
+      setSuggestedUsersLoading(false);
     }
   }, []);
+
+  const loadMoreSuggestedUsers = useCallback(async () => {
+    if (suggestedUsersLoading || !suggestedUsersHasMore) return;
+    await fetchSuggestions(suggestedUsersPage + 1, true);
+  }, [fetchSuggestions, suggestedUsersLoading, suggestedUsersHasMore, suggestedUsersPage]);
 
   // Load incoming follow requests
   const fetchFollowRequests = useCallback(async () => {
@@ -544,10 +594,12 @@ export function AppProvider({ children }) {
 
     const socket = io(socketOrigin, {
       withCredentials: true,
-      transports: ["websocket", "polling"],
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionAttempts: 10,
-      reconnectionDelay: 1500
+      reconnectionDelay: 1500,
+      reconnectionDelayMax: 5000,
+      timeout: 10000
     });
 
     socketRef.current = socket;
@@ -562,8 +614,28 @@ export function AppProvider({ children }) {
       fetchConversations({ silent: true });
     });
 
-    socket.on("disconnect", () => {
+    socket.on("connect_error", (error) => {
       setSocketConnected(false);
+      if (import.meta.env.DEV) {
+        console.warn("[Socket.IO] Connection issue:", error.message || error);
+      }
+    });
+
+    socket.on("reconnect", () => {
+      setSocketConnected(true);
+      const currentActiveConv = activeConvIdRef.current;
+      if (currentActiveConv) {
+        socket.emit("join_conversation", currentActiveConv);
+      }
+      fetchConversations({ silent: true });
+    });
+
+    socket.on("disconnect", (reason) => {
+      setSocketConnected(false);
+      if (reason === "io server disconnect") {
+        // Disconnected by server, reconnect manually if authenticated
+        socket.connect();
+      }
     });
 
     socket.on("new_notification", (newNotif) => {
@@ -1528,7 +1600,11 @@ export function AppProvider({ children }) {
         activeStoryIndex,
         setActiveStoryIndex,
         suggestedUsers,
+        suggestedUsersLoading,
+        suggestedUsersError,
+        suggestedUsersHasMore,
         fetchSuggestions,
+        loadMoreSuggestedUsers,
         followRequests,
         fetchFollowRequests,
         acceptFollowRequest,
@@ -1600,7 +1676,7 @@ export function AppProvider({ children }) {
         toggleFollowUser,
         toastMessage,
         showToast,
-        initialReels: INITIAL_REELS
+        feedError
       }}
     >
       {children}

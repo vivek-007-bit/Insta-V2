@@ -44,11 +44,22 @@ export const initSocket = (httpServer, allowedOrigin) => {
     }
   });
 
-  // Authenticate every socket connection via HTTP-only JWT cookie
+  // Authenticate every socket connection via HTTP-only JWT cookie (with auth/header fallbacks)
   io.use(async (socket, next) => {
     try {
       const cookies = parseCookies(socket.handshake.headers?.cookie);
-      const token = cookies.token;
+      let token = cookies.token;
+
+      // Also check handshake auth and headers for token fallback
+      if (!token && socket.handshake.auth?.token) {
+        token = socket.handshake.auth.token;
+      }
+      if (!token && socket.handshake.headers?.authorization) {
+        const parts = socket.handshake.headers.authorization.split(' ');
+        if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+          token = parts[1];
+        }
+      }
 
       if (!token) {
         return next(new Error('Authentication error: No token provided'));

@@ -46,7 +46,12 @@ export default function SearchPanel({ isInline = false }) {
     addRecentSearch,
     removeRecentSearch,
     clearAllRecentSearches,
-    suggestedUsers
+    suggestedUsers,
+    suggestedUsersLoading,
+    suggestedUsersError,
+    suggestedUsersHasMore,
+    loadMoreSuggestedUsers,
+    fetchSuggestions
   } = useApp();
 
   const navigate = useNavigate();
@@ -695,21 +700,59 @@ export default function SearchPanel({ isInline = false }) {
               )}
             </div>
 
-            {suggestedUsers.length > 0 && (
-              <div className="search-section">
-                <div className="search-section-header">
-                  <h3 className="search-section-title">Suggested for you</h3>
-                </div>
-                <div className="search-results-list">
-                  {suggestedUsers.map((user, idx) =>
-                    renderUserRow(user, suggestedStartIndex + idx, {
-                      showFollowButton: true,
-                      showSubtitle: true
-                    })
-                  )}
-                </div>
+            <div className="search-section">
+              <div className="search-section-header">
+                <h3 className="search-section-title">Suggested for you</h3>
               </div>
-            )}
+
+              {suggestedUsersLoading && suggestedUsers.length === 0 ? (
+                renderSkeletons(4)
+              ) : suggestedUsersError && suggestedUsers.length === 0 ? (
+                <div style={{ padding: "12px 16px", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+                  <span>{suggestedUsersError} </span>
+                  <button
+                    type="button"
+                    onClick={() => fetchSuggestions()}
+                    style={{ color: "var(--accent-blue)", fontWeight: "600", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : suggestedUsers.length === 0 ? (
+                <p className="search-recent-empty-text">No suggestions available right now.</p>
+              ) : (
+                <>
+                  <div className="search-results-list">
+                    {suggestedUsers.map((user, idx) =>
+                      renderUserRow(user, suggestedStartIndex + idx, {
+                        showFollowButton: true,
+                        showSubtitle: true
+                      })
+                    )}
+                  </div>
+                  {suggestedUsersHasMore && (
+                    <div style={{ textAlign: "center", padding: "12px 0" }}>
+                      <button
+                        type="button"
+                        onClick={loadMoreSuggestedUsers}
+                        disabled={suggestedUsersLoading}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--accent-blue)",
+                          fontSize: "var(--font-size-sm)",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          padding: "6px 12px"
+                        }}
+                      >
+                        {suggestedUsersLoading ? "Loading more..." : "Load more suggestions"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         ) : loading ? (
           renderSkeletons(6)

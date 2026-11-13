@@ -17,6 +17,7 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import storyRoutes from './routes/storyRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
+import recommendationRoutes from './routes/recommendationRoutes.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 
 const app = express();
@@ -36,8 +37,19 @@ const parseAllowedOrigins = () => {
     .map((o) => o.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
-  if (process.env.NODE_ENV !== 'production') {
-    for (const devOrigin of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+  const localDevOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:4173',
+    'http://127.0.0.1:4173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+  ];
+
+  // Include local dev origins in development, or if CLIENT_URL explicitly targets a local port
+  const hasLocalConfigured = configured.some((o) => o.includes('localhost') || o.includes('127.0.0.1'));
+  if (process.env.NODE_ENV !== 'production' || hasLocalConfigured || configured.length === 0) {
+    for (const devOrigin of localDevOrigins) {
       if (!configured.includes(devOrigin)) configured.push(devOrigin);
     }
   }
@@ -52,6 +64,12 @@ const corsOriginValidator = (origin, callback) => {
 
   const normalized = origin.trim().replace(/\/+$/, '');
   if (allowedOrigins.includes(normalized)) {
+    return callback(null, true);
+  }
+
+  // Allow Netlify deploy preview subdomains if the root Netlify domain is configured
+  const hasNetlifyConfigured = allowedOrigins.some((o) => o.includes('.netlify.app'));
+  if (hasNetlifyConfigured && /^https:\/\/[a-z0-9-]+--[a-z0-9-]+\.netlify\.app$/i.test(normalized)) {
     return callback(null, true);
   }
 
@@ -129,6 +147,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/stories', storyRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/recommendations', recommendationRoutes);
 
 // Error Handling Middlewares
 app.use(notFound);
