@@ -246,194 +246,340 @@ Insta-V2 integrates a dedicated Python / Django machine learning microservice th
 | **Recommended Posts** | Photo feed exploration (`hybrid-tfidf-cf-v1`, `posts`) | Content-based TF-IDF vectorization across captions, hashtags, and locations combined with user-user collaborative filtering over weighted engagements (likes=2.5, comments=3.5, followed authors=1.2 boost) and 72h exponential recency time decay. |
 | **Recommended Reels** | Short-form video feed (`hybrid-tfidf-cf-v1`, `reels`) | Hybrid audio track affinity (`audio_{track}`), caption TF-IDF vectors, creator affinity, implicit video watch telemetry ($W_{\text{watch}} = 0.5 + 2.5 \cdot \text{CompletionRate}$), and accelerated 48h recency decay. |
 
+<a id="algorithmic--mathematical-summary-of-the-three-recommendation-engines"></a>
 ### 2. Algorithmic & Mathematical Summary of the Three Recommendation Engines
 
-The recommendation microservice implements three distinct machine learning pipelines executed within `recommendations/engine.py`. Each pipeline scores and ranks pre-filtered candidate pools retrieved from MongoDB by the Node.js backend.
+The Insta-V2 recommendation microservice (`ml-service/`) runs three dedicated recommendation engines implemented in `recommendations/engine.py`. Each engine consumes pre-filtered candidate sets retrieved from MongoDB by the Express API, evaluates personalized mathematical scoring functions, and yields an ordered sequence of candidates with transparent attribution reasons.
 
 ---
 
-#### A. Recommended Users Engine (`user-graph-interest-v1`)
+#### Engine 1: Recommended Users (`user-graph-interest-v1`)
 
-* **Algorithm Identifier:** `user-graph-interest-v1`
-* **Implementation Reference:** `generate_user_recommendations(payload)` in `recommendations/engine.py`
-* **Candidate Exclusion Rules:** Node.js pre-filters candidates from MongoDB, excluding:
-  * The authenticated user themselves ($u = c$)
-  * Accounts the user is already following
-  * Accounts with pending follow requests in either direction
-  * Blocked accounts or accounts restricted by privacy settings
+The user recommendation engine identifies accounts that the active user $u$ is most likely to follow by combining second-degree social graph topology, NLP interest similarity, historical interaction patterns, and creator popularity.
 
-##### Mathematical Scoring Components
+##### 1. Input Signals and Candidate Filtering
+* **Candidate Set Discovery:** Node.js executes pre-flight exclusions directly in MongoDB before passing candidates $C = \{c_1, c_2, \dots, c_N\}$ to the ML service.
+* **Exclusion Constraints:**
+  * Self-exclusion: $c \neq u$
+  * Existing relationships: $c \notin \operatorname{Following}(u)$
+  * Pending requests: $c \notin \operatorname{PendingOut}(u) \land c \notin \operatorname{PendingIn}(u)$
+  * Privacy blocks: $c \notin \operatorname{Blocked}(u) \land u \notin \operatorname{Blocked}(c)$
+* **Feature Inputs:**
+  * Profile textual metadata: cleaned biographies ($\text{bio}_u, \text{bio}_c$) and hashtag interest tokens ($\text{tags}_u, \text{tags}_c$).
+  * Social graph topology: mutual follower sets $\operatorname{MutualFollowers}(u, c) = \operatorname{Followers}(u) \cap \operatorname{Followers}(c)$ with count $m_c = |\operatorname{MutualFollowers}(u, c)|$.
+  * Interaction telemetry: cumulative direct engagements $\operatorname{Interactions}(u, c)$ aggregating historical post likes, post comments, and reel watch events.
+  * Account statistics: total follower count $\operatorname{FollowersCount}(c)$ and post volume $\operatorname{PostsCount}(c)$.
 
-1. **Mutual Follower Graph Affinity ($S_{\text{mutual}}$):**
-   Evaluates second-degree topological proximity over the follow graph:
-   $$
-   S_{\text{mutual}}(u,c)=
-   \begin{cases}
-   \min(1.0,\ 0.40+0.20\cdot\log_2(1+m_c)), & m_c>0\\
-   0.0, & m_c=0
-   \end{cases}
-   $$
-   Here, $m_c$ is the number of mutual followers between the active user $u$ and candidate account $c$.
+##### 2. Individual Mathematical Scoring Components
 
-2. **Bio and Interest TF-IDF Cosine Similarity ($S_{\text{content}}$):**
-   Constructs textual interest profiles $D = \text{bio} \Vert \text{tags}$ by concatenating cleaned biographies and top interest hashtags. Vectorization is performed using:
-   `TfidfVectorizer(max_features=1000, stop_words="english", ngram_range=(1, 2))`
-   The unconstrained cosine similarity between candidate vector $v_c$ and user interest vector $v_u$ is computed as:
-   $$
-   \operatorname{sim}_{\cos}(v_c,v_u)=
-   \frac{v_c\cdot v_u}{\|v_c\|_2\|v_u\|_2}
-   $$
-   Normalized to unit range:
-   $$
-   S_{\text{content}}=\operatorname{Normalize}
-   \left(\operatorname{clip}(\operatorname{sim}_{\cos},0.0,1.0)\right)
-   $$
+###### A. Mutual Follower Graph Affinity ($S_{\text{mutual}}$)
 
-3. **Prior Interaction Affinity ($S_{\text{affinity}}$):**
-   Measures historical direct engagements (likes, comments, and Reel watch telemetry):
-   $$
-   S_{\text{affinity}}(u,c)=
-   \operatorname{Normalize}\left(\ln(1+\operatorname{Interactions}(u,c))\right)
-   $$
+**Mutual Follower Graph Affinity Formula**
 
-4. **Account Popularity and Activity ($S_{\text{pop}}$):**
-   Reflects global platform reach and creator activity:
-   $$
-   S_{\text{pop}}(c)=
-   \operatorname{Normalize}\left(
-   \ln(1+\operatorname{FollowersCount}(c)+1.5\cdot\operatorname{PostsCount}(c))
-   \right)
-   $$
+$$
+S_{\text{mutual}}(u,c)=
+\begin{cases}
+\min\left(1.0,\ 0.40 + 0.20 \cdot \log_2(1 + m_c)\right), & \text{if } m_c > 0 \\
+0.0, & \text{if } m_c = 0
+\end{cases}
+$$
 
-##### Composite User Score & Cold-Start Adaptation
+This formula quantifies second-degree topological proximity over the social follow graph. If the active user $u$ and candidate $c$ share at least one mutual follower ($m_c > 0$), a base affinity score of $0.40$ is awarded immediately ($m_c = 1 \implies 0.40 + 0.20 \cdot \log_2(2) = 0.60$). Each subsequent doubling of mutual connections contributes an additional $+0.20$, saturating at an upper ceiling of $1.0$ when $m_c \ge 7$. If no mutual followers exist ($m_c = 0$), the graph affinity evaluates to $0.0$.
 
-* **Warm User ($|\text{Following}| > 0$ or Prior Interactions Exist):**
-  $$
-  S_{\text{user}}(u,c)=
-  0.35S_{\text{mutual}}+
-  0.25S_{\text{content}}+
-  0.20S_{\text{affinity}}+
-  0.20S_{\text{pop}}
-  $$
+###### B. Bio and Interest TF-IDF Cosine Similarity ($S_{\text{content}}$)
 
-* **Cold-Start User ($|\text{Following}| = 0$ and No Interactions):**
-  $$
-  S_{\text{user}}(u,c)=
-  0.55S_{\text{pop}}+
-  0.35S_{\text{content}}+
-  0.10S_{\text{affinity}}
-  $$
+**Unconstrained Profile Cosine Similarity Formula**
 
-* **Attribution Reasons:** Every ranked candidate is tagged with an attribution label explaining why it was recommended:
-  * `mutual_followers`: When mutual follower count $m_c > 0$
-  * `interacted_recently`: When $S_{\text{affinity}} \ge 0.25$
-  * `shared_interests`: When $S_{\text{content}} \ge 0.20$
-  * `popular`: When $S_{\text{pop}} \ge 0.40$ or followers $\ge 10$
-  * `suggested_for_you`: General discovery fallback
+$$
+\operatorname{sim}_{\cos}(v_c, v_u) = \frac{v_c \cdot v_u}{\|v_c\|_2 \|v_u\|_2}
+$$
+
+**Content Similarity Normalization Formula**
+
+$$
+S_{\text{content}}(u, c) = \operatorname{Normalize}\left(\operatorname{clip}\left(\operatorname{sim}_{\cos}(v_c, v_u), 0.0, 1.0\right)\right)
+$$
+
+This component evaluates topical alignment between user profiles. Text documents $D_u = \text{bio}_u \Vert \text{tags}_u$ and $D_c = \text{bio}_c \Vert \text{tags}_c$ are vectorized into unigram and bigram feature vectors $v_u, v_c \in \mathbb{R}^K$ using `TfidfVectorizer(max_features=1000, stop_words="english", ngram_range=(1, 2))`. The inner product normalized by Euclidean $L_2$ norms produces the cosine similarity $\operatorname{sim}_{\cos}(v_c, v_u)$, which is bounded to $[0.0, 1.0]$ and normalized across the candidate batch. If either profile lacks bio and tag text, the component evaluates to $0.0$.
+
+###### C. Prior Interaction Affinity ($S_{\text{affinity}}$)
+
+**Raw Interaction Affinity Formula**
+
+$$
+A_{\text{raw}}(u,c) = \ln\left(1 + \operatorname{Interactions}(u,c)\right)
+$$
+
+**Normalized Interaction Affinity Formula**
+
+$$
+S_{\text{affinity}}(u,c) = \operatorname{Normalize}\left(A_{\text{raw}}(u,c)\right)
+$$
+
+This component captures direct historical interactions between user $u$ and creator $c$, including post likes, comments, and reel watch sessions. Logarithmic scaling $\ln(1 + x)$ prevents users with disproportionately high interaction counts from skewing the candidate distribution while penalizing zero-interaction pairs with an initial raw score of $0.0$.
+
+###### D. Account Popularity and Activity ($S_{\text{pop}}$)
+
+**Raw Account Popularity Formula**
+
+$$
+P_{\text{raw}}(c) = \ln\left(1 + \operatorname{FollowersCount}(c) + 1.5 \cdot \operatorname{PostsCount}(c)\right)
+$$
+
+**Normalized Account Popularity Formula**
+
+$$
+S_{\text{pop}}(c) = \operatorname{Normalize}\left(P_{\text{raw}}(c)\right)
+$$
+
+This component reflects account reach and publishing consistency. The follower count is augmented with creator activity by weighting total published posts at $1.5\times$, rewarding creators who consistently publish high-effort content. The sum is transformed logarithmically to dampen extreme follower outliers.
+
+##### 3. Definitions of Variables
+* $u$: Active authenticated user.
+* $c$: Candidate user account being evaluated.
+* $m_c$: Count of mutual followers between user $u$ and candidate $c$ ($|\operatorname{Followers}(u) \cap \operatorname{Followers}(c)|$).
+* $v_u, v_c$: $L_2$-normalized TF-IDF interest vectors for user $u$ and candidate $c$.
+* $\operatorname{Interactions}(u, c)$: Total direct interaction occurrences between $u$ and $c$.
+* $\operatorname{FollowersCount}(c)$: Total count of followers for candidate $c$.
+* $\operatorname{PostsCount}(c)$: Total count of feed posts authored by candidate $c$.
+* $\operatorname{Normalize}(\cdot)$: Batch min-max scaling mapping raw scores to the unit interval $[0.0, 1.0]$.
+
+##### 4. Normalization and Weighting
+Each sub-score vector across the candidate pool is normalized using the microservice feature scaler:
+$$
+\operatorname{Normalize}(A)_k = \frac{A_k}{\max_{j} A_j} \quad \text{for } A_j \ge 0, \max_j A_j > 0
+$$
+This ensures all individual components ($S_{\text{mutual}}, S_{\text{content}}, S_{\text{affinity}}, S_{\text{pop}}$) operate on the uniform scale $[0.0, 1.0]$ before entering the linear combination equations.
+
+##### 5. Final Composite Scoring Equation (Warm User)
+
+**Warm User Composite Scoring Formula**
+
+$$
+S_{\text{user}}(u,c)=
+0.35S_{\text{mutual}}+
+0.25S_{\text{content}}+
+0.20S_{\text{affinity}}+
+0.20S_{\text{pop}}
+$$
+
+For warm users (defined as users who follow at least one account or have recorded prior interactions), the recommendation engine prioritizes mutual social graph connectivity ($35\%$), topical content relevance ($25\%$), direct historical affinity ($20\%$), and baseline account popularity ($20\%$).
+
+##### 6. Cold-Start Behavior
+
+**Cold-Start Detection Condition**
+
+$$
+\operatorname{IsColdStart}(u) \iff |\operatorname{Following}(u)| = 0 \;\land\; |\operatorname{InteractedAuthors}(u)| = 0
+$$
+
+**Cold-Start User Composite Scoring Formula**
+
+$$
+S_{\text{user}}(u,c)=
+0.55S_{\text{pop}}+
+0.35S_{\text{content}}+
+0.10S_{\text{affinity}}
+$$
+
+When a brand-new user has zero following connections and no interaction history, mutual graph connectivity cannot be evaluated ($S_{\text{mutual}} = 0$). The system transitions to an exploration model where creator popularity drives $55\%$ of the score, textual interest alignment (if bio/tags were provided during onboarding) accounts for $35\%$, and any sparse interactions contribute $10\%$.
+
+##### 7. Demotion and Diversity Adjustments
+In user recommendations, candidates already followed or pending are pruned in the candidate filtering phase. Candidates are directly ranked by descending $S_{\text{user}}(u,c)$.
+
+##### 8. Final Ranking and Recommendation Attribution
+Candidates are sorted descending by $S_{\text{user}}(u,c)$ and sliced to `limit` (default: 15, max: 50). Each returned recommendation is annotated with an explicit human-readable attribution reason evaluated by rule priority:
+1. `mutual_followers`: Assigned when mutual follower count $m_c > 0$.
+2. `interacted_recently`: Assigned when $S_{\text{affinity}} \ge 0.25$.
+3. `shared_interests`: Assigned when $S_{\text{content}} \ge 0.20$.
+4. `popular`: Assigned when $S_{\text{pop}} \ge 0.40$ or $\operatorname{FollowersCount}(c) \ge 10$.
+5. `suggested_for_you`: Default discovery fallback when general exploration criteria are met.
 
 ---
 
-#### B. Recommended Posts Engine (`hybrid-tfidf-cf-v1`, `content_type="posts"`)
+#### Engine 2: Recommended Posts (`hybrid-tfidf-cf-v1`, `content_type="posts"`)
 
-* **Algorithm Identifier:** `hybrid-tfidf-cf-v1`, with `content_type="posts"`
-* **Implementation Reference:** `generate_hybrid_recommendations(payload)` in `recommendations/engine.py`
-* **Candidate Exclusion Rules:** Node.js pre-filters candidates from MongoDB, excluding posts by blocked users and private accounts unless approved.
+The post recommendation engine implements a hybrid scoring pipeline that integrates content-based natural language processing, user-user collaborative filtering, creator affinity, public engagement velocity, exponential recency decay, already-seen item demotion, and iterative creator/hashtag diversity reranking.
 
-##### Interaction Weighting & Signal Construction
-User preferences are modeled from historical actions with differentiated weighting:
-* Likes contribute `+2.5`
-* Comments contribute `+3.5`
-* Followed authors receive a `+1.2` boost across candidate items
+##### 1. Input Signals and Candidate Filtering
+* **Candidate Set Discovery:** Express pulls candidate posts $I = \{i_1, i_2, \dots, i_N\}$ from MongoDB, excluding posts authored by blocked users and private accounts unless followed.
+* **User Engagement History:**
+  * Liked post ID set: $\operatorname{Liked}(u)$.
+  * Commented post ID set: $\operatorname{Commented}(u)$.
+  * Followed creator set: $\operatorname{FollowedAuthors}(u)$.
+* **Candidate Metadata:** Item ID, author ID, caption text, hashtag list, location name, media type, like count, comment count, share count, and creation timestamp.
 
-##### Mathematical Scoring Components
+##### 2. Individual Mathematical Scoring Components
 
-1. **Content-Based TF-IDF Profile Matching ($S_{\text{content}}$):**
-   Aggregates captions, boosted hashtag tokens (`tag_{tag}`), location markers (`loc_{loc}`), and media type into a 1500-feature TF-IDF matrix $X$ using:
-   `TfidfVectorizer(max_features=1500, stop_words="english", ngram_range=(1, 2), min_df=1)`
-   The user preference profile vector $u$ is formed as the linear combination of candidate vectors weighted by prior interactions $w_{\text{item}}$:
-   $$
-   u=X^T w_{\text{item}}
-   $$
-   Normalized to unit length:
-   $$
-   u_{\text{norm}}=\frac{u}{\|u\|_2}
-   $$
-   Content scores across candidate items are computed via cosine similarity and normalized:
-   $$
-   S_{\text{content}}=
-   \operatorname{Normalize}\left(
-   \operatorname{clip}(X\cdot u_{\text{norm}}^T,0.0,1.0)
-   \right)
-   $$
+###### A. Interaction Weighting & User Preference Vector
 
-2. **User-User Collaborative Filtering ($CF_i$):**
-   Evaluates peer cosine similarity over common interaction histories $I_u \cap I_p$:
-   $$
-   \operatorname{sim}_{\text{peer}}(u,p)=
-   \frac{
-   \sum_{j\in I_u\cap I_p}W(u,j)\cdot W(p,j)
-   }{
-   \|w_u\|_2\cdot\|w_p\|_2
-   }
-   $$
-   Candidate item scores accumulate from peers with similarity exceeding the threshold $\operatorname{sim}_{\text{peer}}(u,p) > 0.05$:
-   $$
-   CF_i=
-   \sum_{p:\operatorname{sim}(u,p)>0.05}
-   \operatorname{sim}_{\text{peer}}(u,p)\cdot W(p,i)
-   $$
-   Normalized across candidates to yield $S_{\text{CF}} = \operatorname{Normalize}(CF)$.
+**Item Interaction Weight Formula**
 
-3. **Creator Affinity ($S_{\text{creator}}$):**
-   * `1.0` if the creator is followed
-   * `0.5` if previously interacted with
-   * `0.0` otherwise
-
-4. **Engagement Popularity ($S_{\text{pop}}$):**
-   $$
-   S_{\text{pop}}=
-   \operatorname{Normalize}\left(
-   \ln(1+\operatorname{Likes}+2.0\cdot\operatorname{Comments}+2.0\cdot\operatorname{Shares})
-   \right)
-   $$
-
-5. **Exponential Recency Time Decay ($S_{\text{recency}}$):**
-   Enforces a 72-hour half-life ($T_{1/2}=72.0$ hours) where $\Delta t_{\text{hours}}$ is the age of the item:
-   $$
-   S_{\text{recency}}=
-   \operatorname{Normalize}\left(
-   \exp\left(-\frac{\Delta t_{\text{hours}}}{72.0}\right)
-   \right)
-   $$
-
-##### Base Composite Score & Cold-Start Adaptation
-
-* **Warm User:**
-  $$
-  S_{\text{base}}=
-  0.32S_{\text{content}}+
-  0.25S_{\text{CF}}+
-  0.20S_{\text{creator}}+
-  0.13S_{\text{pop}}+
-  0.10S_{\text{recency}}
-  $$
-
-* **Cold-Start User ($|w_{\text{item}}| < 2$ and No Followed Authors):**
-  $$
-  S_{\text{base}}=
-  0.45S_{\text{pop}}+
-  0.45S_{\text{recency}}+
-  0.10S_{\text{content}}
-  $$
-
-##### Already-Interacted Demotion
-Multiply the score by `0.40` if the user has previously liked or commented on the item:
 $$
-S_{\text{base}}(i) \leftarrow S_{\text{base}}(i) \cdot 0.40 \quad \text{if } i \in (\operatorname{Liked} \cup \operatorname{Commented})
+W(u, j) = 2.5 \cdot \mathbb{I}\left(j \in \operatorname{Liked}(u)\right) + 3.5 \cdot \mathbb{I}\left(j \in \operatorname{Commented}(u)\right) + 1.2 \cdot \mathbb{I}\left(\operatorname{Author}(j) \in \operatorname{FollowedAuthors}(u)\right)
 $$
 
-##### Iterative Diversity and Damping Reranking
-To prevent creator saturation and repetitive hashtag clustering, candidates are greedily ranked using an iterative damping penalty:
+Each candidate item $j$ receives an interaction weight $W(u, j)$ reflecting historical engagement from user $u$, where $\mathbb{I}(\cdot)$ is the binary indicator function. Comments signify deeper engagement than likes and are weighted at $+3.5$ versus $+2.5$. Items authored by creators the user follows receive a $+1.2$ affinity boost.
+
+**User Preference Profile Vector Formulation**
+
+$$
+u = X^T w_{\text{item}}
+$$
+
+**Unit Euclidean Vector Normalization**
+
+$$
+u_{\text{norm}} = \frac{u}{\|u\|_2}
+$$
+
+Candidate documents are tokenized with boosted hashtags (`tag_{tag} {tag}`), location markers (`loc_{loc} {loc}`), and media type into a 1500-feature TF-IDF matrix $X \in \mathbb{R}^{N \times M}$ (`max_features=1500, stop_words="english", ngram_range=(1, 2), min_df=1`). The user profile vector $u$ is formed as the linear combination of candidate feature vectors weighted by the interaction vector $w_{\text{item}} = [W(u, j)]_{j=1}^N$. Normalizing by its Euclidean norm $\|u\|_2$ produces $u_{\text{norm}}$.
+
+###### B. Content-Based Cosine Similarity ($S_{\text{content}}$)
+
+**Content Similarity Scoring Formula**
+
+$$
+S_{\text{content}}(u, i) = \operatorname{Normalize}\left(\operatorname{clip}\left(X_i \cdot u_{\text{norm}}^T,\ 0.0,\ 1.0\right)\right)
+$$
+
+This evaluates how closely candidate post $i$'s caption, hashtags, location, and media type match user $u$'s aggregated preference profile $u_{\text{norm}}$, normalized to $[0.0, 1.0]$.
+
+###### C. User-User Collaborative Filtering ($S_{\text{CF}}$)
+
+**Peer Cosine Similarity Formula**
+
+$$
+\operatorname{sim}_{\text{peer}}(u, p) = \frac{\sum_{j \in I_u \cap I_p} W(u, j) \cdot W(p, j)}{\|w_u\|_2 \cdot \|w_p\|_2}
+$$
+
+**Collaborative Filtering Accumulation Formula**
+
+$$
+CF_i = \sum_{p : \operatorname{sim}_{\text{peer}}(u, p) > 0.05} \operatorname{sim}_{\text{peer}}(u, p) \cdot W(p, i)
+$$
+
+**Normalized Collaborative Filtering Score**
+
+$$
+S_{\text{CF}}(i) = \operatorname{Normalize}(CF_i)
+$$
+
+Peer user similarity $\operatorname{sim}_{\text{peer}}(u, p)$ measures interaction overlap between active user $u$ and peer user $p$. Only peers with similarity strictly exceeding the threshold $\operatorname{sim}_{\text{peer}}(u, p) > 0.05$ contribute to candidate scoring. Candidate item score $CF_i$ accumulates the peer's interaction weight on item $i$, scaled by peer similarity, and normalized across candidates.
+
+###### D. Creator Relationship Affinity ($S_{\text{creator}}$)
+
+**Creator Affinity Formula**
+
+$$
+S_{\text{creator}}(i) =
+\begin{cases}
+1.0, & \text{if } \operatorname{Author}(i) \in \operatorname{FollowedAuthors}(u) \\
+0.5, & \text{if } \operatorname{Author}(i) \in \operatorname{InteractedAuthors}(u) \setminus \operatorname{FollowedAuthors}(u) \\
+0.0, & \text{otherwise}
+\end{cases}
+$$
+
+This signal grants maximum affinity ($1.0$) to items by creators the user actively follows, moderate affinity ($0.5$) to creators the user has previously interacted with, and $0.0$ to creators with no prior relationship.
+
+###### E. Engagement Popularity ($S_{\text{pop}}$)
+
+**Raw Engagement Popularity Formula**
+
+$$
+P_{\text{raw}}(i) = \ln\left(1 + \operatorname{Likes}(i) + 2.0 \cdot \operatorname{Comments}(i) + 2.0 \cdot \operatorname{Shares}(i)\right)
+$$
+
+**Normalized Engagement Popularity Score**
+
+$$
+S_{\text{pop}}(i) = \operatorname{Normalize}(P_{\text{raw}}(i))
+$$
+
+This measures public engagement velocity across the platform. Comments and shares are weighted double ($2.0\times$) relative to likes to reflect active conversation and distribution.
+
+###### F. Exponential Recency Time Decay ($S_{\text{recency}}$)
+
+**72-Hour Half-Life Recency Decay Formula**
+
+$$
+R_{\text{raw}}(i) = \exp\left(-\frac{\Delta t_{\text{hours}}}{72.0}\right)
+$$
+
+**Normalized Recency Score**
+
+$$
+S_{\text{recency}}(i) = \operatorname{Normalize}(R_{\text{raw}}(i))
+$$
+
+Post relevance decays continuously according to an exponential decay model with a **72-hour half-life** ($T_{1/2} = 72.0$ hours), where $\Delta t_{\text{hours}} = \max\left(0,\ \frac{t_{\text{now}} - t_{\text{created}}}{3600}\right)$ is the elapsed time since publication. At 72 hours, the raw recency score drops to $0.50$; at 144 hours (6 days), it drops to $0.25$.
+
+##### 3. Definitions of Variables
+* $u$: Active authenticated user.
+* $i, j$: Candidate post item identifiers.
+* $p$: Peer user in the collaborative filtering cohort.
+* $w_{\text{item}}$: Weight vector representing user $u$'s historical interactions with items.
+* $X$: 1500-column TF-IDF matrix representing textual and categorical features of candidates.
+* $u_{\text{norm}}$: Unit-normalized user preference vector in TF-IDF space.
+* $\operatorname{sim}_{\text{peer}}(u, p)$: Cosine similarity between interaction histories of user $u$ and peer $p$.
+* $I_u, I_p$: Sets of items interacted with by user $u$ and peer $p$.
+* $\Delta t_{\text{hours}}$: Elapsed age of candidate item in decimal hours.
+* $S_{\text{base}}$: Pre-damping composite recommendation score.
+* $S_{\text{adjusted}}$: Post-damping score after diversity and penalty reranking.
+
+##### 4. Normalization and Weighting
+All components ($S_{\text{content}}, S_{\text{CF}}, S_{\text{creator}}, S_{\text{pop}}, S_{\text{recency}}$) are normalized to $[0.0, 1.0]$ via `_normalize_array` before entering the linear combination equations.
+
+##### 5. Final Composite Scoring Equation (Base Score)
+
+**Warm User Base Composite Scoring Formula**
+
+$$
+S_{\text{base}}(i)=
+0.32S_{\text{content}}(i)+
+0.25S_{\text{CF}}(i)+
+0.20S_{\text{creator}}(i)+
+0.13S_{\text{pop}}(i)+
+0.10S_{\text{recency}}(i)
+$$
+
+For warm users, content matching ($32\%$) and peer collaborative filtering ($25\%$) form the core personalization signals ($57\%$ combined), supported by creator affinity ($20\%$), platform engagement ($13\%$), and recency decay ($10\%$).
+
+##### 6. Cold-Start Behavior
+
+**Cold-Start Detection Condition**
+
+$$
+\operatorname{IsColdStart}(u) \iff |w_{\text{item}}| < 2 \;\land\; |\operatorname{FollowedAuthors}(u)| = 0
+$$
+
+**Cold-Start Base Composite Scoring Formula**
+
+$$
+S_{\text{base}}(i)=
+0.45S_{\text{pop}}(i)+
+0.45S_{\text{recency}}(i)+
+0.10S_{\text{content}}(i)
+$$
+
+When a user has interacted with fewer than 2 items and follows zero creators, personalized collaborative filtering and creator affinity are omitted. Recommendation relies on high-velocity trending content ($45\%$) and fresh content ($45\%$), with a $10\%$ exploratory content component.
+
+##### 7. Demotion and Diversity Adjustments
+
+###### A. Already-Interacted Item Demotion
+
+**Already-Interacted Item Penalty Formula**
+
+$$
+S_{\text{base}}(i) \leftarrow S_{\text{base}}(i) \cdot 0.40 \quad \text{if } i \in (\operatorname{Liked}(u) \cup \operatorname{Commented}(u))
+$$
+
+To guarantee feed freshness and prevent recommendation loops, any post the user has previously liked or commented on incurs a $60\%$ score reduction (multiplier $0.40$), pushing unseen posts to the top while preserving high-relevance items if inventory is low.
+
+###### B. Iterative Diversity and Damping Reranking
+
+**Iterative Creator and Hashtag Diversity Reranking Formula**
+
 $$
 S_{\text{adjusted}}(i)=
 (S_{\text{base}}(i)+0.15)
@@ -444,46 +590,182 @@ S_{\text{adjusted}}(i)=
 \sum_{t\in\operatorname{tags}_i[:3]}H(t)
 }
 $$
-Here, $C(\operatorname{Author}(i))$ penalizes repeated creators, while $H(t)$ dampens overlapping hashtags.
 
-##### Attribution Reasons:
-Each post candidate is classified with its primary driver: `following`, `interests`, `collaborative`, `trending`, `recent`, or `popular`.
+**Why a two-stage scoring model is applied:** A greedy sort on $S_{\text{base}}$ alone frequently clusters multiple posts from the single most prolific author or creates feeds dominated by a single trending hashtag. The reranker operates greedily in an iterative loop:
+1. Candidate $i$ with the highest current $S_{\text{adjusted}}(i)$ is chosen for the next slot.
+2. The author frequency count $C(\operatorname{Author}(i))$ increments, applying a geometric decay of $0.55^C$ ($45\%$ penalty per already-selected post from the same creator).
+3. The selected item's top-3 hashtags increment their global frequency $H(t)$, penalizing subsequent posts sharing those tags via $\frac{1}{1 + 0.15 \sum H(t)}$.
+4. The $+0.15$ baseline offset prevents low-scoring diverse items from collapsing to zero, preserving variety across the full recommendation batch.
+
+##### 8. Final Ranking and Recommendation Attribution
+Items are ordered by selection sequence from the iterative reranker. Each item receives an attribution reason:
+* Cold-start: `trending` (if $S_{\text{pop}} \ge S_{\text{recency}}$) or `recent`.
+* Warm:
+  * `collaborative`: if $S_{\text{CF}} \ge \max(S_{\text{content}}, S_{\text{creator}})$.
+  * `interests`: if $S_{\text{content}} \ge S_{\text{creator}}$.
+  * `following`: if $\operatorname{Author}(i) \in \operatorname{FollowedAuthors}(u)$.
+  * `popular`: default fallback.
 
 ---
 
-#### C. Recommended Reels Engine (`hybrid-tfidf-cf-v1`, `content_type="reels"`)
+#### Engine 3: Recommended Reels (`hybrid-tfidf-cf-v1`, `content_type="reels"`)
 
-* **Algorithm Identifier:** `hybrid-tfidf-cf-v1`, with `content_type="reels"`
-* **Implementation Reference:** `generate_hybrid_recommendations(payload)` in `recommendations/engine.py`
-* **Candidate Exclusion Rules:** Node.js pre-filters candidates from MongoDB, excluding reels from blocked creators and private accounts unless followed.
+The reel recommendation engine extends the hybrid model to vertical short-form video by integrating implicit video watch telemetry, acoustic track affinity, and accelerated 48-hour recency decay.
 
-##### Implicit Video Telemetry Weighting
-Reels capture fine-grained video consumption telemetry in addition to explicit interactions:
-$$
-\operatorname{CompletionRate}=
-\min\left(1.0,\frac{\operatorname{WatchDurationSeconds}}{\operatorname{VideoDurationSeconds}}\right)
-$$
-When watch duration is at least `2.0` seconds or completion rate is at least `0.25`:
-$$
-W_{\text{watch}}(u,r)=
-0.5+2.5\cdot\operatorname{CompletionRate}
-$$
-This watch weight is accumulated into user weights alongside likes (`+2.5`) and comments (`+3.5`).
+##### 1. Input Signals and Candidate Filtering
+* **Candidate Set Discovery:** Express retrieves candidate reels $R = \{r_1, r_2, \dots, r_N\}$ from MongoDB, excluding reels from blocked creators and private accounts unless followed.
+* **Implicit Video Telemetry Input:** The client dispatches periodic watch beacon events recording total watch duration $\operatorname{WatchDurationSeconds}(u, r)$ and video duration $\operatorname{VideoDurationSeconds}(r)$.
+* **Candidate Metadata:** Reel ID, author ID, video URL, thumbnail URL, caption, hashtags, audio track name (`audio_track`), engagement metrics, duration, and creation timestamp.
 
-##### Acoustic and Audio Track Affinity
-Integrates boosted `audio_{audio_track}` tokens to connect users with recurring musical and audio trends.
+##### 2. Individual Mathematical Scoring Components
 
-##### Accelerated Recency Decay
-Uses a 48-hour half-life ($T_{1/2}=48.0$ hours) to surface rapidly trending short-form content:
+###### A. Continuous Video Completion Rate & Telemetry Weighting
+
+**Video Completion Rate Formula**
+
 $$
-S_{\text{recency}}=
-\operatorname{Normalize}\left(
-\exp\left(-\frac{\Delta t_{\text{hours}}}{48.0}\right)
-\right)
+\operatorname{CompletionRate}(u, r) = \min\left(1.0,\ \frac{\operatorname{WatchDurationSeconds}(u, r)}{\operatorname{VideoDurationSeconds}(r)}\right)
 $$
 
-##### Composite Scoring & Diversity Reranking
-Reels inherit the same multi-signal composite weighting ($0.32 S_{\text{content}} + 0.25 S_{\text{CF}} + 0.20 S_{\text{creator}} + 0.13 S_{\text{pop}} + 0.10 S_{\text{recency}}$), already-interacted demotion ($\times 0.40$), and iterative diversity reranking ($0.55^{C(\text{Author})} \cdot \frac{1}{1 + 0.15 \sum H(t)}$).
+**Telemetry Qualification Condition**
+
+$$
+\operatorname{Qualifies}(u, r) \iff \operatorname{WatchDurationSeconds}(u, r) \ge 2.0 \;\lor\; \operatorname{CompletionRate}(u, r) \ge 0.25
+$$
+
+**Implicit Watch Weight Formula**
+
+$$
+W_{\text{watch}}(u, r) = 0.5 + 2.5 \cdot \operatorname{CompletionRate}(u, r)
+$$
+
+Reels incorporate continuous video watch behavior into the interaction weight matrix. If a user watches a reel for at least $2.0$ seconds OR completes at least $25\%$ of its total duration, the watch session qualifies as an intentional view. Qualified watches generate an implicit weight ranging from $+0.5$ (low completion) up to $+3.0$ (full video completion). This watch weight is accumulated directly into the user-item interaction weight vector alongside explicit likes ($+2.5$) and comments ($+3.5$):
+$$
+W(u, r) \leftarrow W(u, r) + W_{\text{watch}}(u, r)
+$$
+
+###### B. Acoustic and Audio Track Affinity ($S_{\text{content}}$)
+Short-form video engagement is heavily driven by audio trends. The engine tokenizes audio metadata into boosted tokens:
+$$
+\text{audio\_tokens} = \text{"audio\_" + audio\_track.replace(' ', '\_') + " " + audio\_track}
+$$
+These tokens are embedded into the TF-IDF feature space alongside captions, boosted hashtags (`tag_{tag}`), and location markers, allowing the content similarity equation $S_{\text{content}}(u, r)$ to match users with recurring musical tracks, original voice clips, and trending sounds.
+
+###### C. Accelerated Exponential Recency Decay ($S_{\text{recency}}$)
+
+**48-Hour Half-Life Accelerated Recency Decay Formula**
+
+$$
+R_{\text{raw}}(r) = \exp\left(-\frac{\Delta t_{\text{hours}}}{48.0}\right)
+$$
+
+**Normalized Reels Recency Score**
+
+$$
+S_{\text{recency}}(r) = \operatorname{Normalize}(R_{\text{raw}}(r))
+$$
+
+**Explicit Distinction Between Reels and Posts Recency Decay:**
+* **Posts Half-Life ($T_{1/2} = 72.0\text{ hours}$):** Static photos maintain conversational engagement over a 3-day cycle.
+* **Reels Half-Life ($T_{1/2} = 48.0\text{ hours}$):** Short-form video consumption is fast-moving and viral. At 48 hours, a reel's raw recency score halves to $0.50$; at 96 hours (4 days), it drops to $0.25$. This accelerated decay actively prevents stale video feeds and accelerates discovery of rapidly trending content.
+
+###### D. Collaborative Filtering, Creator Affinity, & Popularity
+The remaining scoring components follow the hybrid posts engine:
+* $S_{\text{CF}}(r)$: User-user collaborative filtering over accumulated explicit and watch weights ($\operatorname{sim}_{\text{peer}} > 0.05$).
+* $S_{\text{creator}}(r)$: Creator affinity ($1.0$ followed, $0.5$ interacted, $0.0$ default).
+* $S_{\text{pop}}(r)$: Engagement velocity $\operatorname{Normalize}(\ln(1 + \operatorname{Likes} + 2.0\cdot\operatorname{Comments} + 2.0\cdot\operatorname{Shares}))$.
+
+##### 3. Definitions of Variables
+* $u$: Active authenticated user.
+* $r$: Candidate reel video identifier.
+* $\operatorname{WatchDurationSeconds}(u, r)$: Total elapsed playback time logged by the client video player.
+* $\operatorname{VideoDurationSeconds}(r)$: Total length of the candidate video file.
+* $\operatorname{CompletionRate}(u, r)$: Fraction of the video watched, capped at $1.0$.
+* $W_{\text{watch}}(u, r)$: Implicit telemetry interaction weight ($0.5$ to $3.0$).
+* $T_{1/2}$: Half-life decay constant ($48.0$ hours for reels vs $72.0$ hours for posts).
+* $S_{\text{base}}$: Base composite reel recommendation score.
+* $S_{\text{adjusted}}$: Final reranked reel score after diversity damping.
+
+##### 4. Normalization and Weighting
+All five scoring signals ($S_{\text{content}}, S_{\text{CF}}, S_{\text{creator}}, S_{\text{pop}}, S_{\text{recency}}$) are normalized to $[0.0, 1.0]$ via `_normalize_array`.
+
+##### 5. Final Composite Scoring Equation (Base Score)
+
+**Warm User Reels Base Composite Scoring Formula**
+
+$$
+S_{\text{base}}(r)=
+0.32S_{\text{content}}(r)+
+0.25S_{\text{CF}}(r)+
+0.20S_{\text{creator}}(r)+
+0.13S_{\text{pop}}(r)+
+0.10S_{\text{recency}}(r)
+$$
+
+Evaluates the linear combination of content/audio similarity ($32\%$), collaborative filtering ($25\%$), creator relationship ($20\%$), popularity ($13\%$), and accelerated recency decay ($10\%$).
+
+##### 6. Cold-Start Behavior
+
+**Cold-Start Reels Base Composite Scoring Formula**
+
+$$
+S_{\text{base}}(r)=
+0.45S_{\text{pop}}(r)+
+0.45S_{\text{recency}}(r)+
+0.10S_{\text{content}}(r)
+$$
+
+Triggered when the user has interacted with fewer than 2 items and follows zero creators. Viral engagement velocity ($45\%$) and fresh 48-hour recency ($45\%$) dominate the recommendations.
+
+##### 7. Demotion and Diversity Adjustments
+* **Already-Interacted Demotion:** Reels the user has liked or commented on receive a $0.40\times$ multiplier.
+* **Iterative Diversity Reranking:** Applies the identical geometric creator damping ($0.55^{C(\text{Author})}$) and hashtag damping ($\frac{1}{1 + 0.15 \sum H(t)}$) to prevent video feed repetition:
+
+**Reels Diversity Reranking Formula**
+
+$$
+S_{\text{adjusted}}(r)=
+(S_{\text{base}}(r)+0.15)
+\cdot 0.55^{C(\operatorname{Author}(r))}
+\cdot
+\frac{1}{
+1.0+0.15\cdot
+\sum_{t\in\operatorname{tags}_r[:3]}H(t)
+}
+$$
+
+##### 8. Final Ranking and Recommendation Attribution
+Candidates are ranked in order of selection from the iterative reranker and assigned attribution reasons: `following`, `interests`, `collaborative`, `trending`, `recent`, or `popular`.
+
+---
+
+#### Mathematical Notation Reference Table
+
+The following table summarizes all mathematical symbols, variable identifiers, and scoring metrics utilized across the three recommendation engines:
+
+| Symbol / Variable | Domain / Type | Implementation Definition in `recommendations/engine.py` |
+| :--- | :--- | :--- |
+| $u$ | String / ID | Active authenticated user requesting recommendations. |
+| $c$ | String / ID | Candidate user account under evaluation for follow recommendation. |
+| $p$ | String / ID | Peer user in the collaborative filtering cohort sharing interacted items with $u$. |
+| $i$ | String / ID | Candidate post item under evaluation. |
+| $r$ | String / ID | Candidate reel video item under evaluation. |
+| $j$ | String / ID | Arbitrary item index in interaction histories ($j \in I_u$ or $j \in I_p$). |
+| $m_c$ | Integer $\ge 0$ | Count of mutual followers between active user $u$ and candidate account $c$. |
+| $S_{\text{mutual}}$ | Float $[0.0, 1.0]$ | Normalized second-degree graph affinity score based on mutual follower count $m_c$. |
+| $S_{\text{content}}$ | Float $[0.0, 1.0]$ | Normalized cosine similarity between candidate feature vector and user interest profile. |
+| $S_{\text{affinity}}$ | Float $[0.0, 1.0]$ | Normalized historical direct interaction affinity score between user $u$ and candidate $c$. |
+| $S_{\text{pop}}$ | Float $[0.0, 1.0]$ | Normalized logarithmic engagement popularity score across followers, likes, comments, and shares. |
+| $S_{\text{CF}}$ | Float $[0.0, 1.0]$ | Normalized user-user collaborative filtering score aggregated from similar peers. |
+| $S_{\text{creator}}$ | Float $\{0.0, 0.5, 1.0\}$ | Discrete affinity weight based on whether the candidate item's author is followed ($1.0$), interacted with ($0.5$), or neither ($0.0$). |
+| $S_{\text{recency}}$ | Float $[0.0, 1.0]$ | Normalized exponential time decay score based on item age and half-life ($T_{1/2}$). |
+| $W(u, j)$ | Float $\ge 0.0$ | Cumulative interaction weight assigned by user $u$ to item $j$ (likes=2.5, comments=3.5, author=1.2, watch=0.5–3.0). |
+| $I_u, I_p$ | Set of IDs | Set of item IDs with recorded engagements by user $u$ and peer $p$, respectively. |
+| $X$ | Matrix $\mathbb{R}^{N \times M}$ | 1500-column TF-IDF feature matrix encoding captions, boosted hashtags, locations, audio, and media types. |
+| $w_{\text{item}}$ | Vector $\mathbb{R}^N$ | Dense vector of interaction weights $[W(u, j)]_{j=1}^N$ used to project user profile $u = X^T w_{\text{item}}$. |
+| $C(\operatorname{Author})$ | Integer $\ge 0$ | Count of items authored by a given creator that have already been chosen in the current recommendation session. |
+| $H(t)$ | Integer $\ge 0$ | Cumulative selection frequency of hashtag $t$ in the top-3 hashtag positions across previously chosen items. |
+| $\Delta t_{\text{hours}}$ | Float $\ge 0.0$ | Elapsed age of a candidate item from its creation timestamp to the current time, in decimal hours. |
 
 ---
 
