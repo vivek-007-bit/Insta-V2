@@ -15,6 +15,7 @@ import Saved from "./pages/Saved";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import LandingPage from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
 
 // Styles
@@ -30,7 +31,8 @@ export default function App() {
     <AppProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Authentication Pages (Rendered without MainLayout sidebar/panels) */}
+          {/* Public Pages (Rendered without MainLayout sidebar/panels) */}
+          <Route path="/landing-page" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
 

@@ -1,0 +1,416 @@
+/* ==============================================================================
+   Insta-V2 — Minimal Two-Section Landing Page Styles (Refined Typography)
+   ============================================================================== */
+
+:root {
+  --lp-orange: #e67e22;
+  --lp-orange-hover: #d35400;
+  --lp-orange-light: #fef5ea;
+  --lp-navy-overlay: rgba(15, 23, 42, 0.78);
+  --lp-charcoal-heading: #0f172a;
+  --lp-charcoal-body: #475569;
+  --lp-card-border: #e2e8f0;
+  --lp-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  --lp-card-shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.1);
+}
+
+.lp-container {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background-color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--lp-charcoal-body);
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+/* ------------------------------------------------------------------------------
+   Section 1: Hero Section
+   ------------------------------------------------------------------------------ */
+.lp-hero {
+  position: relative;
+  width: 100%;
+  min-height: 72vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+  padding: 70px 24px;
+  box-sizing: border-box;
+}
+
+.lp-hero-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=1920&q=80");
+  background-size: cover;
+  background-position: center center;
+  animation: lpHeroZoom 24s ease-in-out infinite alternate;
+  z-index: 0;
+  transform-origin: center center;
+}
+
+@keyframes lpHeroZoom {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1.08);
+  }
+}
+
+.lp-hero-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.72) 0%,
+    rgba(15, 23, 42, 0.86) 100%
+  );
+  z-index: 1;
+}
+
+.lp-hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 1. Hero Heading: Responsive clamp, substantially larger, bold, prominent */
+.lp-hero-title {
+  font-size: clamp(2.8rem, 5vw + 0.8rem, 4.6rem);
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  margin: 0 0 20px;
+  line-height: 1.15;
+  opacity: 0;
+  animation: lpFadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* 2. Hero Subtitle: Increased font size, line height, comfortable readability */
+.lp-hero-subtitle {
+  font-size: clamp(1.2rem, 1.8vw + 0.5rem, 1.45rem);
+  color: #f1f5f9;
+  font-weight: 400;
+  line-height: 1.65;
+  max-width: 760px;
+  margin: 0 0 44px;
+  opacity: 0;
+  animation: lpFadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s forwards;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* 3. GET STARTED Button: Increased text size, button height, and horizontal padding */
+.lp-hero-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 16px 46px;
+  background-color: var(--lp-orange);
+  color: #ffffff;
+  font-size: 1.08rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 18px rgba(230, 126, 34, 0.45);
+  opacity: 0;
+  animation: lpFadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.45s forwards;
+}
+
+.lp-hero-btn:hover {
+  background-color: var(--lp-orange-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(230, 126, 34, 0.55);
+}
+
+@keyframes lpFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ------------------------------------------------------------------------------
+   Section 2: Getting Started Section
+   ------------------------------------------------------------------------------ */
+.lp-getting-started {
+  width: 100%;
+  background-color: #ffffff;
+  padding: 96px 24px 120px;
+  box-sizing: border-box;
+}
+
+.lp-section-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.lp-section-header {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+/* 4. Section Heading: Noticeably larger, visually prominent, clear hierarchy */
+.lp-section-title {
+  font-size: clamp(2.3rem, 3.4vw + 0.6rem, 3.2rem);
+  font-weight: 800;
+  color: var(--lp-charcoal-heading);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  margin: 0 0 14px;
+}
+
+.lp-section-subtitle {
+  font-size: clamp(1.12rem, 1.4vw + 0.5rem, 1.3rem);
+  color: #64748b;
+  font-weight: 400;
+  line-height: 1.6;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+/* ------------------------------------------------------------------------------
+   Cards Grid (Three Equal Width Cards)
+   ------------------------------------------------------------------------------ */
+.lp-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  margin-bottom: 64px;
+}
+
+.lp-card {
+  background-color: #ffffff;
+  border: 1px solid var(--lp-card-border);
+  border-radius: 10px;
+  padding: 42px 32px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: var(--lp-card-shadow);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  box-sizing: border-box;
+}
+
+.lp-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--lp-card-shadow-hover);
+  border-color: #cbd5e1;
+}
+
+.lp-card-icon-wrap {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background-color: var(--lp-orange-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--lp-orange);
+  margin-bottom: 24px;
+  flex-shrink: 0;
+}
+
+/* 5. Service Card Headings: Increased font size, font weight, clear distinction */
+.lp-card-title {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--lp-charcoal-heading);
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+  line-height: 1.3;
+}
+
+/* 6. Card Descriptions: Increased body font size and line height, comfortable reading */
+.lp-card-desc {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--lp-charcoal-body);
+  margin: 0 0 32px;
+  flex-grow: 1;
+}
+
+/* 7. Card Buttons: Increased font size, padding, and height */
+.lp-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 15px 24px;
+  background-color: var(--lp-orange);
+  color: #ffffff;
+  font-size: 0.96rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(230, 126, 34, 0.25);
+}
+
+.lp-card-btn:hover {
+  background-color: var(--lp-orange-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(230, 126, 34, 0.4);
+}
+
+/* ------------------------------------------------------------------------------
+   8. Cold-Start Explanation Note (Improved Heading, Paragraph & Sequence)
+   ------------------------------------------------------------------------------ */
+.lp-coldstart-box {
+  background-color: #f8fafc;
+  border: 1px solid var(--lp-card-border);
+  border-left: 5px solid var(--lp-orange);
+  border-radius: 8px;
+  padding: 32px 38px;
+  max-width: 960px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.lp-coldstart-title {
+  font-size: 1.28rem;
+  font-weight: 700;
+  color: var(--lp-charcoal-heading);
+  letter-spacing: -0.015em;
+  margin: 0 0 14px;
+  line-height: 1.35;
+}
+
+.lp-coldstart-text {
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: #334155;
+  margin: 0 0 22px;
+}
+
+.lp-sequence-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+}
+
+.lp-sequence-item {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--lp-charcoal-heading);
+  letter-spacing: -0.01em;
+}
+
+.lp-sequence-item.optional {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.lp-sequence-arrow {
+  color: var(--lp-orange);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------------------
+   Responsive Design & Breakpoints
+   ------------------------------------------------------------------------------ */
+@media (max-width: 1024px) {
+  .lp-cards-grid {
+    gap: 22px;
+  }
+
+  .lp-card {
+    padding: 34px 22px 28px;
+  }
+
+  .lp-card-title {
+    font-size: 1.32rem;
+  }
+
+  .lp-card-desc {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 860px) {
+  .lp-cards-grid {
+    grid-template-columns: 1fr;
+    max-width: 540px;
+    margin-left: auto;
+    margin-right: auto;
+    gap: 24px;
+  }
+
+  .lp-card {
+    padding: 36px 28px;
+  }
+
+  .lp-getting-started {
+    padding: 72px 20px 96px;
+  }
+
+  .lp-coldstart-box {
+    padding: 26px 24px;
+  }
+
+  .lp-sequence-box {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .lp-sequence-arrow {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .lp-hero {
+    min-height: 65vh;
+    padding: 60px 16px;
+  }
+
+  .lp-hero-btn {
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .lp-card {
+    padding: 30px 20px;
+  }
+}
