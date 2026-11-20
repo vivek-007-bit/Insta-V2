@@ -85,7 +85,13 @@ api.interceptors.response.use(
     // Notify AppContext when a protected request fails with 401 (expired/invalid session)
     const requestUrl = error.config?.url || '';
     const isAuthLifecycleEndpoint = AUTH_PUBLIC_PATHS.some((p) => requestUrl.includes(p));
-    if (status === 401 && !isAuthLifecycleEndpoint && typeof window !== 'undefined') {
+    const isPublicPage =
+      typeof window !== 'undefined' &&
+      (window.location.pathname === '/login' ||
+        window.location.pathname === '/signup' ||
+        window.location.pathname === '/landing-page');
+
+    if (status === 401 && !isAuthLifecycleEndpoint && !isPublicPage && typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('insta:unauthorized', {
           detail: { message, url: requestUrl }

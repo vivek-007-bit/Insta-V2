@@ -29,7 +29,7 @@ import ReelCommentsModal from "../components/reels/ReelCommentsModal";
 export default function Reels() {
   const { reelId } = useParams();
   const navigate = useNavigate();
-  const { currentUser, showToast, updateFollowState } = useApp();
+  const { currentUser, showToast, updateFollowState, isAuthenticated, authLoading } = useApp();
 
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,8 +108,9 @@ export default function Reels() {
   }, [reelId, showToast]);
 
   useEffect(() => {
+    if (!isAuthenticated || authLoading) return;
     loadInitialReels();
-  }, [loadInitialReels]);
+  }, [loadInitialReels, isAuthenticated, authLoading]);
 
   // Infinite scroll fetch next batch
   const loadMoreReels = useCallback(async () => {

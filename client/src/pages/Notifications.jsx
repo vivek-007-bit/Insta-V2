@@ -36,7 +36,9 @@ export default function Notifications() {
     acceptFollowRequest,
     rejectFollowRequest,
     updateFollowState,
-    showToast
+    showToast,
+    isAuthenticated,
+    authLoading
   } = useApp();
 
   const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
@@ -45,9 +47,10 @@ export default function Notifications() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!isAuthenticated || authLoading) return;
     fetchNotifications(1, false);
     fetchFollowRequests();
-  }, [fetchNotifications, fetchFollowRequests]);
+  }, [fetchNotifications, fetchFollowRequests, isAuthenticated, authLoading]);
 
   // Badge icon for each notification type
   const getBadgeIcon = (type) => {

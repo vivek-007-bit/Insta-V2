@@ -17,6 +17,22 @@ const AppContext = createContext();
 let inFlightMePromise = null;
 
 export function AppProvider({ children }) {
+  // Real Backend Auth States (Declared at the top so all hooks & callbacks can access them)
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const isAuthenticatedRef = useRef(false);
+  const authLoadingRef = useRef(true);
+
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    authLoadingRef.current = authLoading;
+  }, [authLoading]);
+
   // Search Panel overlay & persistent query/tab state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -27,6 +43,7 @@ export function AppProvider({ children }) {
   const [recentSearchesLoading, setRecentSearchesLoading] = useState(false);
 
   const fetchRecentSearches = useCallback(async () => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     setRecentSearchesLoading(true);
     try {
       const res = await searchService.getRecentSearches();
@@ -41,7 +58,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const addRecentSearch = useCallback(async (input) => {
-    if (!input) return;
+    if (!input || !isAuthenticatedRef.current || authLoadingRef.current) return;
 
     let payload = null;
     let optimisticItem = null;
@@ -129,6 +146,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const removeRecentSearch = useCallback(async (idOrUsername) => {
+    if (!idOrUsername || !isAuthenticatedRef.current || authLoadingRef.current) return;
     let targetId = idOrUsername;
     setRecentSearches((prev) => {
       const matched = prev.find(
@@ -158,6 +176,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const clearAllRecentSearches = useCallback(async () => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     setRecentSearches([]);
     try {
       await searchService.clearRecentSearches();
@@ -179,17 +198,6 @@ export function AppProvider({ children }) {
   const toggleTheme = () => {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };
-
-  // Real Backend Auth States
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const isAuthenticatedRef = useRef(false);
-
-  useEffect(() => {
-    isAuthenticatedRef.current = isAuthenticated;
-  }, [isAuthenticated]);
 
   // Social States
   const [posts, setPosts] = useState([]);
@@ -254,6 +262,7 @@ export function AppProvider({ children }) {
 
   // Load active stories from MongoDB for Stories Bar
   const fetchStoriesFeed = useCallback(async ({ silent = false } = {}) => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     if (!silent) {
       setStoriesLoading(true);
     }
@@ -278,6 +287,7 @@ export function AppProvider({ children }) {
   const feedInFlightRef = useRef(false);
 
   const fetchFeed = useCallback(async () => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     if (feedInFlightRef.current) return;
     feedInFlightRef.current = true;
     setFeedLoading(true);
@@ -287,6 +297,7 @@ export function AppProvider({ children }) {
       try {
         res = await recommendationService.getRecommendedPosts(1, 15);
       } catch {
+        if (!isAuthenticatedRef.current || authLoadingRef.current) return;
         res = await postService.getFeedPosts(1, 15);
       }
       if (res && Array.isArray(res.posts)) {
@@ -305,6 +316,7 @@ export function AppProvider({ children }) {
 
   // Load next page of recommended feed posts
   const loadMoreFeed = useCallback(async () => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     if (loadingMoreFeed || !feedHasMore) return;
     setLoadingMoreFeed(true);
     const nextPage = feedPage + 1;
@@ -313,6 +325,7 @@ export function AppProvider({ children }) {
       try {
         res = await recommendationService.getRecommendedPosts(nextPage, 15);
       } catch {
+        if (!isAuthenticatedRef.current || authLoadingRef.current) return;
         res = await postService.getFeedPosts(nextPage, 15);
       }
       if (res && Array.isArray(res.posts)) {
@@ -333,6 +346,7 @@ export function AppProvider({ children }) {
 
   // Load recommended users from ML recommendation pipeline (falling back to searchService.getSuggestions)
   const fetchSuggestions = useCallback(async (page = 1, append = false) => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     setSuggestedUsersLoading(true);
     setSuggestedUsersError("");
     try {
@@ -345,6 +359,7 @@ export function AppProvider({ children }) {
           hasMore = Boolean(res.hasMore);
         }
       } catch {
+        if (!isAuthenticatedRef.current || authLoadingRef.current) return;
         // Fallback to search suggestions if recommendations endpoint errors
         const fallbackRes = await searchService.getSuggestions(10);
         if (fallbackRes && Array.isArray(fallbackRes.users)) {
@@ -369,12 +384,14 @@ export function AppProvider({ children }) {
   }, []);
 
   const loadMoreSuggestedUsers = useCallback(async () => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     if (suggestedUsersLoading || !suggestedUsersHasMore) return;
     await fetchSuggestions(suggestedUsersPage + 1, true);
   }, [fetchSuggestions, suggestedUsersLoading, suggestedUsersHasMore, suggestedUsersPage]);
 
   // Load incoming follow requests
   const fetchFollowRequests = useCallback(async () => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     try {
       const res = await followRequestService.getIncomingRequests();
       if (res && Array.isArray(res.requests)) {
@@ -387,6 +404,7 @@ export function AppProvider({ children }) {
 
   // Load notifications from MongoDB
   const fetchNotifications = useCallback(async (pageNum = 1, append = false) => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     setNotificationsLoading(true);
     setNotificationsError("");
     try {
@@ -413,6 +431,7 @@ export function AppProvider({ children }) {
 
   // Load unread count efficiently
   const fetchUnreadCount = useCallback(async () => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     try {
       const res = await notificationService.getUnreadCount();
       if (res && typeof res.unreadCount === "number") {
@@ -425,6 +444,7 @@ export function AppProvider({ children }) {
 
   // Load real direct message conversations from MongoDB
   const fetchConversations = useCallback(async ({ silent = false } = {}) => {
+    if (!isAuthenticatedRef.current || authLoadingRef.current) return;
     if (!silent) {
       setConversationsLoading(true);
     }
@@ -448,7 +468,7 @@ export function AppProvider({ children }) {
 
   // Load paginated messages for a specific conversation (newest initially, cursor for older)
   const loadConversationMessages = useCallback(async (convId, { before = null, limit = 25 } = {}) => {
-    if (!convId) return null;
+    if (!convId || !isAuthenticatedRef.current || authLoadingRef.current) return null;
     try {
       const res = await messageService.getMessages(convId, { limit, before });
       const fetched = Array.isArray(res?.messages) ? res.messages : [];
@@ -489,6 +509,7 @@ export function AppProvider({ children }) {
   const fetchCurrentUser = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setAuthLoading(true);
+      authLoadingRef.current = true;
     }
 
     try {
@@ -501,34 +522,36 @@ export function AppProvider({ children }) {
       const res = await inFlightMePromise;
       if (res && res.user) {
         setCurrentUser(res.user);
+        currentUserRef.current = res.user;
         setIsAuthenticated(true);
+        isAuthenticatedRef.current = true;
         setAuthError(null);
       } else {
         setCurrentUser(null);
+        currentUserRef.current = null;
         setIsAuthenticated(false);
+        isAuthenticatedRef.current = false;
         setAuthError(null);
       }
     } catch (err) {
       const isGenuineAuthFailure = Boolean(err?.isAuthError || err?.status === 401);
       const isNetworkOrServerIssue = Boolean(err?.isNetworkError || err?.status >= 500 || !err?.status);
 
+      setCurrentUser(null);
+      currentUserRef.current = null;
+      setIsAuthenticated(false);
+      isAuthenticatedRef.current = false;
+
       if (isGenuineAuthFailure) {
-        setCurrentUser(null);
-        setIsAuthenticated(false);
         setAuthError(null);
       } else if (isNetworkOrServerIssue) {
         setAuthError(err?.message || "Unable to reach the authentication server.");
-        // Only leave unauthenticated on cold boot; do not force-logout an already active session on transient blips
-        if (!isAuthenticatedRef.current) {
-          setCurrentUser(null);
-          setIsAuthenticated(false);
-        }
       } else {
-        setCurrentUser(null);
-        setIsAuthenticated(false);
+        setAuthError(null);
       }
     } finally {
       setAuthLoading(false);
+      authLoadingRef.current = false;
     }
   }, []);
 
@@ -545,7 +568,9 @@ export function AppProvider({ children }) {
       }
       if (isAuthenticatedRef.current) {
         setCurrentUser(null);
+        currentUserRef.current = null;
         setIsAuthenticated(false);
+        isAuthenticatedRef.current = false;
         showToast("Your session has expired. Please log in again.");
       }
     };
@@ -554,30 +579,36 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener("insta:unauthorized", handleUnauthorized);
   }, [showToast]);
 
-  // Fetch social data & connect real-time Socket.IO when authenticated
+  // Fetch social data & connect real-time Socket.IO ONLY when authenticated and authLoading is false
   useEffect(() => {
-    if (!isAuthenticated) {
-      setPosts([]);
-      setStories([]);
-      setStoriesError("");
-      setActiveStoryIndex(null);
-      setSuggestedUsers([]);
-      setFollowRequests([]);
-      setConversations([]);
-      setActiveConvId(null);
-      setMessagesByConv({});
-      setConversationsError("");
-      setSocketConnected(false);
-      setNotifications([]);
-      setUnreadCount(0);
-      setRecentSearches([]);
-      setSearchQuery("");
-      setSearchCategory("all");
-      clearSearchCache();
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
+    if (!isAuthenticated || authLoading) {
+      if (!isAuthenticated && !authLoading) {
+        setPosts([]);
+        setStories([]);
+        setStoriesError("");
+        setActiveStoryIndex(null);
+        setSuggestedUsers([]);
+        setFollowRequests([]);
+        setConversations([]);
+        setActiveConvId(null);
+        setMessagesByConv({});
+        setConversationsError("");
+        setSocketConnected(false);
+        setNotifications([]);
+        setUnreadCount(0);
+        setRecentSearches([]);
+        setSearchQuery("");
+        setSearchCategory("all");
+        clearSearchCache();
+        if (socketRef.current) {
+          socketRef.current.disconnect();
+          socketRef.current = null;
+        }
       }
+      return;
+    }
+
+    if (!isAuthenticatedRef.current || authLoadingRef.current) {
       return;
     }
 
@@ -791,6 +822,7 @@ export function AppProvider({ children }) {
     };
   }, [
     isAuthenticated,
+    authLoading,
     fetchFeed,
     fetchStoriesFeed,
     fetchSuggestions,
@@ -802,20 +834,62 @@ export function AppProvider({ children }) {
     loadConversationMessages
   ]);
 
-  // Real Backend Login
+  // Real Backend Login with verified cookie establishment
   const login = async (identifier, password) => {
     try {
+      setAuthLoading(true);
+      authLoadingRef.current = true;
+      setAuthError(null);
+
       const res = await authService.login({ identifier, password });
-      if (res && res.user) {
-        setCurrentUser(res.user);
-        setIsAuthenticated(true);
-        setAuthError(null);
+      if (!res || !res.user) {
         setAuthLoading(false);
-        showToast(res.message || `Welcome back, @${res.user.username}!`);
-        return { success: true, user: res.user };
+        authLoadingRef.current = false;
+        return { success: false, error: res?.message || "Failed to authenticate" };
       }
-      return { success: false, error: "Failed to authenticate" };
+
+      // Step 2 & 3: Ensure cookie has been established by the browser via /api/auth/me
+      let verifiedUser = res.user;
+      try {
+        const meRes = await authService.getMe();
+        if (meRes && meRes.user) {
+          verifiedUser = meRes.user;
+        }
+      } catch (meErr) {
+        console.warn("[Auth] /api/auth/me verification after login:", meErr.message);
+        // If /me failed with 401, the browser blocked or dropped cross-origin cookie
+        if (meErr?.status === 401 || meErr?.isAuthError) {
+          setAuthLoading(false);
+          authLoadingRef.current = false;
+          setIsAuthenticated(false);
+          isAuthenticatedRef.current = false;
+          setCurrentUser(null);
+          currentUserRef.current = null;
+          return {
+            success: false,
+            error: "Authentication cookie could not be established. If using cross-site hosting, ensure third-party cookies are enabled."
+          };
+        }
+      }
+
+      // Step 4: Complete authentication initialization
+      setCurrentUser(verifiedUser);
+      currentUserRef.current = verifiedUser;
+      setIsAuthenticated(true);
+      isAuthenticatedRef.current = true;
+      setAuthError(null);
+      setAuthLoading(false);
+      authLoadingRef.current = false;
+
+      showToast(res.message || `Welcome back, @${verifiedUser.username}!`);
+      return { success: true, user: verifiedUser };
     } catch (err) {
+      setAuthLoading(false);
+      authLoadingRef.current = false;
+      setIsAuthenticated(false);
+      isAuthenticatedRef.current = false;
+      setCurrentUser(null);
+      currentUserRef.current = null;
       return {
         success: false,
         error: err.message || "Invalid credentials"
@@ -823,25 +897,52 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Real Backend Signup
+  // Real Backend Signup with verified cookie establishment
   const signup = async ({ fullName, username, email, password }) => {
     try {
+      setAuthLoading(true);
+      authLoadingRef.current = true;
+      setAuthError(null);
+
       const res = await authService.signup({
         fullName,
         username,
         email,
         password
       });
-      if (res && res.user) {
-        setCurrentUser(res.user);
-        setIsAuthenticated(true);
-        setAuthError(null);
+      if (!res || !res.user) {
         setAuthLoading(false);
-        showToast(res.message || `Welcome to Insta-V2, @${res.user.username}!`);
-        return { success: true, user: res.user };
+        authLoadingRef.current = false;
+        return { success: false, error: res?.message || "Failed to create account" };
       }
-      return { success: false, error: "Failed to create account" };
+
+      let verifiedUser = res.user;
+      try {
+        const meRes = await authService.getMe();
+        if (meRes && meRes.user) {
+          verifiedUser = meRes.user;
+        }
+      } catch (meErr) {
+        console.warn("[Auth] /api/auth/me verification after signup:", meErr.message);
+      }
+
+      setCurrentUser(verifiedUser);
+      currentUserRef.current = verifiedUser;
+      setIsAuthenticated(true);
+      isAuthenticatedRef.current = true;
+      setAuthError(null);
+      setAuthLoading(false);
+      authLoadingRef.current = false;
+
+      showToast(res.message || `Welcome to Insta-V2, @${verifiedUser.username}!`);
+      return { success: true, user: verifiedUser };
     } catch (err) {
+      setAuthLoading(false);
+      authLoadingRef.current = false;
+      setIsAuthenticated(false);
+      isAuthenticatedRef.current = false;
+      setCurrentUser(null);
+      currentUserRef.current = null;
       return {
         success: false,
         error: err.message || "Could not register account"
@@ -861,8 +962,13 @@ export function AppProvider({ children }) {
         socketRef.current = null;
       }
       setCurrentUser(null);
+      currentUserRef.current = null;
       setIsAuthenticated(false);
+      isAuthenticatedRef.current = false;
+      setAuthLoading(false);
+      authLoadingRef.current = false;
       setPosts([]);
+      setStories([]);
       setSuggestedUsers([]);
       setFollowRequests([]);
       setNotifications([]);
@@ -870,6 +976,8 @@ export function AppProvider({ children }) {
       setConversations([]);
       setActiveConvId(null);
       setMessagesByConv({});
+      setRecentSearches([]);
+      clearSearchCache();
       showToast("Logged out successfully");
     }
   };

@@ -60,7 +60,9 @@ export default function Messages() {
     leaveConversationRoom,
     currentUser,
     suggestedUsers,
-    showToast
+    showToast,
+    isAuthenticated,
+    authLoading
   } = useApp();
 
   const [inputMessage, setInputMessage] = useState("");
@@ -106,8 +108,9 @@ export default function Messages() {
 
   // Ensure inbox conversations load when entering /messages
   useEffect(() => {
+    if (!isAuthenticated || authLoading) return;
     fetchConversations({ silent: conversations.length > 0 });
-  }, [fetchConversations, conversations.length]);
+  }, [fetchConversations, conversations.length, isAuthenticated, authLoading]);
 
   // Join active conversation socket room, load newest messages, and mark read on open
   useEffect(() => {
