@@ -6,8 +6,15 @@
   publish = "dist"
 
 # 1. Backend API Proxy (evaluated before SPA fallback)
-# Proxies /api/* requests to the persistent Render Express server so HTTP-only cookies
-# can also work first-party when VITE_API_BASE_URL=/api is used.
+# Proxies both /api and /api/* requests to the persistent Render Express server so
+# HTTP-only cookies are received and stored as first-party cookies for the Netlify origin.
+# Netlify forwards request bodies, methods, query parameters, and passes through Set-Cookie headers.
+[[redirects]]
+  from = "/api"
+  to = "https://instav2-server.onrender.com/api"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/api/*"
   to = "https://instav2-server.onrender.com/api/:splat"

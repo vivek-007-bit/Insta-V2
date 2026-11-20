@@ -39,8 +39,12 @@ export const getJwtSecret = () => {
 };
 
 /**
- * Builds consistent HTTP-only cookie options for local HTTP dev vs Render HTTPS production.
- * Detects HTTPS behind Render's reverse proxy even if NODE_ENV was not explicitly set.
+ * Builds consistent HTTP-only cookie options for same-origin proxy (Netlify -> Render)
+ * as well as local HTTP development.
+ * 
+ * In a same-origin proxy architecture, the browser communicates directly with the Netlify
+ * domain, so the cookie is first-party. SameSite=Lax ensures the cookie is accepted and
+ * forwarded on all same-origin API requests, completely avoiding third-party cookie blocking.
  */
 export const getCookieOptions = (req = null) => {
   const forwardedProto = String(req?.headers?.['x-forwarded-proto'] || '')
@@ -50,24 +54,12 @@ export const getCookieOptions = (req = null) => {
   const isHttpsRequest = Boolean(req?.secure) || forwardedProto === 'https';
   const isProduction = process.env.NODE_ENV === 'production' || isHttpsRequest;
 
-  let sameSite = isProduction ? 'none' : 'lax';
+  let sameSite = 'lax';
   if (process.env.COOKIE_SAME_SITE) {
     sameSite = process.env.COOKIE_SAME_SITE.trim().toLowerCase();
-  } else if (isProduction && req?.headers?.origin && req?.headers?.host) {
-    try {
-      const originHost = new URL(req.headers.origin).host;
-      const serverHost = String(req.headers['x-forwarded-host'] || req.headers.host)
-        .split(',')[0]
-        .trim();
-      if (originHost && serverHost && originHost === serverHost) {
-        sameSite = 'lax';
-      }
-    } catch {
-      // Keep default cross-site 'none'
-    }
   }
 
-  // Browsers reject SameSite=None without Secure=true; local HTTP uses SameSite=Lax + Secure=false
+  // Secure must be true on HTTPS / production; false on local dev HTTP
   const isSecure = isProduction || sameSite === 'none';
 
   return {

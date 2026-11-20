@@ -2,15 +2,31 @@ import axios from 'axios';
 
 const PROD_RENDER_ORIGIN = 'https://instav2-server.onrender.com';
 
-const rawEnvBase =
+const rawEnvBase = (
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  '';
+  ''
+).trim();
 
-export const API_BASE_URL = (
-  rawEnvBase ||
-  (import.meta.env.PROD ? '/api' : 'http://localhost:8000/api')
-).replace(/\/+$/, '');
+/**
+ * API_BASE_URL configuration:
+ * - Local Development: uses rawEnvBase (e.g. 'http://localhost:8000/api') or defaults to 'http://localhost:8000/api'.
+ * - Production: enforces the same-origin Netlify proxy '/api'. This guarantees that all browser API
+ *   calls go to the same origin (Netlify), making the HTTP-only JWT cookie first-party and immune to
+ *   cross-site / third-party cookie blocking in modern browsers (Chrome, Safari, Firefox).
+ *   Even if VITE_API_BASE_URL was set to the external Render URL in Netlify settings, we normalize to '/api'.
+ */
+export const API_BASE_URL = (() => {
+  if (import.meta.env.DEV) {
+    return (rawEnvBase || 'http://localhost:8000/api').replace(/\/+$/, '');
+  }
+  // In production, if explicitly set to a relative proxy path like '/api', use it
+  if (rawEnvBase && rawEnvBase.startsWith('/')) {
+    return rawEnvBase.replace(/\/+$/, '');
+  }
+  // Production default is always the same-origin Netlify proxy
+  return '/api';
+})();
 
 export const getSocketOrigin = () => {
   let explicitSocket = (import.meta.env.VITE_SOCKET_URL || '').trim().replace(/\/+$/, '');

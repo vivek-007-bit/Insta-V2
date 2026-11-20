@@ -857,19 +857,16 @@ export function AppProvider({ children }) {
         }
       } catch (meErr) {
         console.warn("[Auth] /api/auth/me verification after login:", meErr.message);
-        // If /me failed with 401, the browser blocked or dropped cross-origin cookie
-        if (meErr?.status === 401 || meErr?.isAuthError) {
-          setAuthLoading(false);
-          authLoadingRef.current = false;
-          setIsAuthenticated(false);
-          isAuthenticatedRef.current = false;
-          setCurrentUser(null);
-          currentUserRef.current = null;
-          return {
-            success: false,
-            error: "Authentication cookie could not be established. If using cross-site hosting, ensure third-party cookies are enabled."
-          };
-        }
+        setAuthLoading(false);
+        authLoadingRef.current = false;
+        setIsAuthenticated(false);
+        isAuthenticatedRef.current = false;
+        setCurrentUser(null);
+        currentUserRef.current = null;
+        return {
+          success: false,
+          error: meErr?.message || "Session could not be verified after login. Please try again."
+        };
       }
 
       // Step 4: Complete authentication initialization
@@ -924,6 +921,16 @@ export function AppProvider({ children }) {
         }
       } catch (meErr) {
         console.warn("[Auth] /api/auth/me verification after signup:", meErr.message);
+        setAuthLoading(false);
+        authLoadingRef.current = false;
+        setIsAuthenticated(false);
+        isAuthenticatedRef.current = false;
+        setCurrentUser(null);
+        currentUserRef.current = null;
+        return {
+          success: false,
+          error: meErr?.message || "Session could not be verified after registration. Please log in."
+        };
       }
 
       setCurrentUser(verifiedUser);

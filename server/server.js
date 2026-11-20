@@ -67,9 +67,8 @@ const corsOriginValidator = (origin, callback) => {
     return callback(null, true);
   }
 
-  // Allow Netlify deploy preview subdomains if the root Netlify domain is configured
-  const hasNetlifyConfigured = allowedOrigins.some((o) => o.includes('.netlify.app'));
-  if (hasNetlifyConfigured && /^https:\/\/[a-z0-9-]+--[a-z0-9-]+\.netlify\.app$/i.test(normalized)) {
+  // Allow Netlify production domains and deploy preview subdomains
+  if (/^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.netlify\.app$/i.test(normalized)) {
     return callback(null, true);
   }
 
